@@ -3,481 +3,1138 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Земельные лоты — мониторинг</title>
+<title>Земельные лоты — мониторинг torgi.gov.ru</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <style>
-  :root{
-    --bg: #1c2420; --bg-panel: #232d27; --bg-panel-2: #2a352e;
-    --line: #3a473e; --text: #e8e4d8; --text-dim: #9aa89e;
-    --accent: #c68a3e; --accent-soft: #c68a3e33; --teal: #6ea391; --danger: #c15c4a;
-  }
-  *{box-sizing:border-box;}
-  body{margin:0; background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; font-size:14px; min-height:100vh;}
-  h1,h2{font-family:'Source Serif 4',serif; font-weight:600; margin:0;}
-  a{color:var(--teal);}
-  .topbar{display:flex; align-items:center; justify-content:space-between; padding:16px 28px; border-bottom:1px solid var(--line); background:var(--bg-panel); flex-wrap:wrap; gap:12px;}
-  .topbar h1{font-size:22px;}
-  .topbar .sub{color:var(--text-dim); font-size:13px; margin-top:2px;}
-  .update-box{display:flex; align-items:center; gap:10px;}
-  .update-btn{background:var(--accent); color:#1c1408; border:none; padding:9px 16px; border-radius:3px; font-weight:600; font-size:13px; cursor:pointer;}
-  .update-btn:disabled{opacity:0.5; cursor:default;}
-  .update-status{font-size:12.5px; color:var(--text-dim); max-width:320px;}
-  .layout{display:flex; min-height:calc(100vh - 74px); flex-wrap:wrap;}
-  .sidebar{width:280px; flex-shrink:0; padding:20px; border-right:1px solid var(--line); background:var(--bg-panel); overflow-y:auto;}
-  .filter-group{margin-bottom:22px;}
-  .filter-group label{display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px; font-weight:500;}
-  select, input[type=text], input[type=number]{width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text); padding:7px 8px; border-radius:3px; font-size:13px; font-family:'Inter',sans-serif;}
-  select[multiple]{height:100px;}
-  .range-row{display:flex; gap:8px;}
-  .range-row input{width:50%;}
-  .reset-btn{width:100%; background:transparent; border:1px solid var(--line); color:var(--text-dim); padding:8px; border-radius:3px; cursor:pointer; font-size:12px; margin-top:4px;}
-  .reset-btn:hover{border-color:var(--text-dim); color:var(--text);}
-  .count-badge{background:var(--accent-soft); border:1px solid var(--accent); color:var(--accent); padding:8px 10px; border-radius:3px; font-size:13px; margin-bottom:18px;}
-  .main{flex:1; display:flex; flex-direction:column; min-width:0;}
-  .tabs{display:flex; gap:2px; padding:14px 24px 0; border-bottom:1px solid var(--line);}
-  .tab{padding:9px 18px; cursor:pointer; color:var(--text-dim); font-size:13px; border-bottom:2px solid transparent; font-weight:500;}
-  .tab.active{color:var(--accent); border-color:var(--accent);}
-  .view{flex:1; padding:20px 24px; overflow:auto; display:none;}
-  .view.active{display:block;}
-  table{width:100%; border-collapse:collapse; font-size:12.5px;}
-  th{text-align:left; padding:9px 10px; color:var(--text-dim); font-weight:500; border-bottom:1px solid var(--line); cursor:pointer; white-space:nowrap; position:sticky; top:0; background:var(--bg-panel);}
-  th:hover{color:var(--accent);}
-  td{padding:9px 10px; border-bottom:1px solid #2c352f; vertical-align:top;}
-  tr:hover td{background:var(--bg-panel-2);}
-  .price{font-family:'IBM Plex Mono',monospace; color:var(--accent);}
-  .empty-state{padding:60px 20px; text-align:center; color:var(--text-dim);}
-  .empty-state h2{color:var(--text); margin-bottom:8px; font-size:18px;}
-  #map{height:100%; width:100%; border-radius:4px; overflow:hidden;}
-  .map-controls{display:flex; align-items:center; gap:12px; margin-bottom:12px;}
-  .geo-btn{background:var(--teal); color:#0e1a15; border:none; padding:8px 14px; border-radius:3px; font-weight:600; font-size:12.5px; cursor:pointer;}
-  .geo-btn:disabled{opacity:0.5; cursor:default;}
-  .geo-status{color:var(--text-dim); font-size:12.5px;}
-  .popup-title{font-weight:600; margin-bottom:4px;}
-  .popup-row{font-size:12px; margin-bottom:2px;}
-  .error-box{background:#c15c4a22; border:1px solid var(--danger); color:#e8b3a8; padding:10px 12px; border-radius:3px; font-size:12.5px; margin:0 24px 16px;}
-  ::-webkit-scrollbar{width:9px; height:9px;}
-  ::-webkit-scrollbar-thumb{background:#3a473e; border-radius:5px;}
+:root{
+  --bg:#1b2320; --panel:#232d28; --panel2:#2b3731; --line:#3a473f; --text:#e9e5d9; --dim:#9aa89f;
+  --accent:#c98d3f; --accent-soft:#c98d3f26; --teal:#6fa593; --danger:#c8604e;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:13.5px;display:flex;flex-direction:column}
+h1,h2,h3{font-family:'Source Serif 4',serif;font-weight:600;margin:0}
+a{color:var(--teal)}
+button{font-family:inherit;cursor:pointer}
+.top{display:flex;align-items:center;gap:16px;padding:10px 20px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.top h1{font-size:19px}
+.top .cnt{color:var(--dim)}
+.top .cnt b{color:var(--accent);font-weight:600}
+.top .sp{flex:1}
+.btn{background:var(--accent);color:#1d1408;border:0;border-radius:3px;padding:8px 14px;font-weight:600;font-size:13px}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.btn.ghost:hover{border-color:var(--dim)}
+.btn:disabled{opacity:.5;cursor:default}
+.layout{flex:1;min-height:0;display:flex}
+.sidebar{width:310px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:14px}
+.sidebar h3{font-size:12px;color:var(--dim);text-transform:none;font-family:'Inter',sans-serif;font-weight:500;margin:16px 0 6px}
+.sidebar input[type=text],.sidebar input[type=number],.sidebar input[type=date],.modal-box input[type=text],.modal-box input[type=number]{
+  width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:3px;padding:7px 8px;font-size:13px;font-family:inherit}
+.row2{display:flex;gap:6px}
+.row2>*{flex:1;min-width:0}
+.chk{display:flex;align-items:center;gap:7px;margin:7px 0;color:var(--text)}
+.ms{margin-bottom:6px;border:1px solid var(--line);border-radius:3px;background:var(--bg)}
+.ms-btn{width:100%;display:flex;align-items:center;gap:8px;background:transparent;color:var(--text);border:0;padding:8px 9px;text-align:left;font-size:13px}
+.ms-btn.on .ms-title{color:var(--accent)}
+.ms-title{flex:1}
+.ms-count{background:var(--accent);color:#1d1408;border-radius:9px;padding:0 7px;font-size:11.5px;font-weight:600}
+.ms-count:empty{display:none}
+.ms-caret{color:var(--dim)}
+.ms-panel{border-top:1px solid var(--line);padding:8px}
+.ms-search{width:100%;background:var(--panel)!important}
+.ms-actions{display:flex;gap:14px;margin:7px 0;font-size:12px}
+.ms-list{max-height:230px;overflow-y:auto}
+.ms-item{display:flex;align-items:flex-start;gap:7px;padding:4px 2px;cursor:pointer;line-height:1.3}
+.ms-item:hover{background:var(--panel2)}
+.ms-item input{margin-top:2px;accent-color:var(--accent)}
+.ms-lbl{flex:1}
+.ms-n{color:var(--dim);font-size:11.5px}
+.ms-empty{color:var(--dim);padding:6px}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.tabs{display:flex;border-bottom:1px solid var(--line);padding:0 16px}
+.tab{padding:11px 16px;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;font-weight:500}
+.tab.active{color:var(--accent);border-color:var(--accent)}
+.views{flex:1;min-height:0;position:relative}
+.view{position:absolute;inset:0;display:none;overflow:auto}
+.view.active{display:block}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{position:sticky;top:0;background:var(--panel);color:var(--dim);text-align:left;font-weight:500;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer;z-index:2}
+th:hover{color:var(--accent)}
+th.num,td.num{text-align:right}
+td{padding:8px 10px;border-bottom:1px solid #2b342f;vertical-align:top}
+tr[data-id]{cursor:pointer}
+tr[data-id]:hover td{background:var(--panel2)}
+tr.cx td{opacity:.45;text-decoration:line-through}
+td.mono{font-family:'IBM Plex Mono',monospace;font-size:12px;white-space:nowrap}
+td.price{font-family:'IBM Plex Mono',monospace;color:var(--accent)}
+td.num{white-space:nowrap}
+.c-addr{min-width:240px}.c-use{min-width:200px}.c-org{min-width:180px}
+.pager{display:flex;gap:14px;align-items:center;justify-content:center;padding:12px}
+.pager button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:3px;padding:6px 12px}
+.pager button:disabled{opacity:.4}
+.empty{text-align:center;color:var(--dim);padding:70px 20px}
+.empty h2{color:var(--text);margin-bottom:8px}
+#map{position:absolute;inset:0}
+.mapbar{position:absolute;z-index:500;top:10px;left:56px;background:rgba(27,35,32,.92);border:1px solid var(--line);border-radius:3px;padding:7px 11px;font-size:12.5px}
+.mapbar span{display:block;color:var(--dim)}
+.legend{position:absolute;z-index:500;left:10px;bottom:24px;background:rgba(27,35,32,.92);border:1px solid var(--line);border-radius:3px;padding:8px 10px;font-size:12px}
+.legend div{display:flex;align-items:center;gap:7px;margin:3px 0}
+.legend .dot,.pin-in{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff}
+.legend .dot{width:20px;height:20px;font-size:11px}
+.pin-in{width:30px;height:30px;font-size:16px;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5)}
+.card{position:fixed;top:0;right:0;bottom:0;width:420px;max-width:100vw;background:var(--panel);border-left:1px solid var(--line);z-index:2000;overflow-y:auto;padding:18px;transform:translateX(105%);transition:transform .2s}
+.card.open{transform:none;box-shadow:-8px 0 30px rgba(0,0,0,.45)}
+.card-close{position:absolute;top:8px;right:12px;background:none;border:0;color:var(--dim);font-size:28px;line-height:1}
+.card-head h2{font-size:17px;line-height:1.3;margin:10px 26px 4px 0}
+.card-head .sub{color:var(--dim)}
+.badge{display:inline-block;color:#fff;border-radius:11px;padding:2px 10px;font-size:12px;margin-right:6px}
+.badge.deal{background:var(--panel2);border:1px solid var(--line)}
+.badge.cxb{background:var(--danger)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}
+.stats div{background:var(--bg);border:1px solid var(--line);border-radius:3px;padding:8px 10px}
+.stats span{display:block;color:var(--dim);font-size:11.5px}
+.stats b{font-size:15px;font-weight:600}
+.stats b.price{color:var(--accent)}
+.note{background:var(--accent-soft);border:1px solid var(--accent);border-radius:3px;padding:8px 10px;margin-bottom:12px;font-size:12.5px}
+.kv{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #2b342f}
+.kv .k{width:150px;flex-shrink:0;color:var(--dim);font-size:12.5px}
+.kv .v{flex:1;word-break:break-word}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal[hidden]{display:none}
+.modal-box{background:var(--panel);border:1px solid var(--line);border-radius:4px;width:640px;max-width:100%;max-height:92vh;overflow-y:auto;padding:22px}
+.modal-box h2{font-size:19px;margin-bottom:6px}
+.modal-box h3{font-size:15px;margin:22px 0 6px}
+.hint{color:var(--dim);font-size:12.5px;line-height:1.5;margin:4px 0 10px}
+.modal-box label.lb{display:block;color:var(--dim);font-size:12px;margin:12px 0 5px}
+.actions{display:flex;gap:8px;margin:14px 0 10px;flex-wrap:wrap}
+.bar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden}
+#barFill{height:100%;width:0;background:var(--accent);transition:width .2s}
+#loadStatus,#nspdStatus{color:var(--dim);font-size:12.5px;margin-top:7px;min-height:18px}
+.leaflet-container{background:#dfe6e2;font-family:'Inter',sans-serif}
+@media(max-width:900px){.sidebar{width:100%;max-height:45vh;border-right:0;border-bottom:1px solid var(--line)}.layout{flex-direction:column}}
 </style>
 </head>
 <body>
-
-<div class="topbar">
-  <div>
-    <h1>Земельные лоты</h1>
-    <div class="sub">Извещения ЗК РФ (torgi.gov.ru) — сбор прямо в браузере</div>
-  </div>
-  <div class="update-box">
-    <button class="update-btn" id="updateBtn">Обновить данные</button>
-    <span class="update-status" id="updateStatus"></span>
-  </div>
+<div class="top">
+  <h1>Земельные лоты</h1>
+  <div class="cnt">Найдено: <b id="cntFiltered">0</b> из <span id="cntAll">0</span></div>
+  <div class="sp"></div>
+  <button class="btn ghost" id="btnCsv">Скачать CSV</button>
+  <button class="btn" id="btnData">Данные</button>
 </div>
 
-<div id="errorBox" class="error-box" style="display:none;"></div>
-
 <div class="layout">
-  <div class="sidebar">
-    <div id="countBadge" class="count-badge">Нажмите «Обновить данные», чтобы начать</div>
+  <aside class="sidebar">
+    <h3 style="margin-top:0">Поиск по тексту</h3>
+    <input type="text" id="fText" placeholder="Кадастровый номер или квартал, населённый пункт, адрес…">
 
-    <div class="filter-group">
-      <label>Регион</label>
-      <select id="fRegion" multiple></select>
-    </div>
+    <h3>Фильтры</h3>
+    <div id="msHost"></div>
 
-    <div class="filter-group">
-      <label>Категория земель</label>
-      <select id="fCategory" multiple></select>
-    </div>
+    <h3>Площадь, м²</h3>
+    <div class="row2"><input type="number" id="fAreaMin" placeholder="от"><input type="number" id="fAreaMax" placeholder="до"></div>
+    <h3>Начальная цена, ₽</h3>
+    <div class="row2"><input type="number" id="fPriceMin" placeholder="от"><input type="number" id="fPriceMax" placeholder="до"></div>
+    <h3>Кадастровая стоимость, ₽</h3>
+    <div class="row2"><input type="number" id="fCostMin" placeholder="от"><input type="number" id="fCostMax" placeholder="до"></div>
+    <h3>НЦ / КС, %</h3>
+    <div class="row2"><input type="number" id="fPctMin" placeholder="от"><input type="number" id="fPctMax" placeholder="до"></div>
+    <h3>Окончание приёма заявок</h3>
+    <div class="row2"><input type="date" id="fDateFrom"><input type="date" id="fDateTo"></div>
 
-    <div class="filter-group">
-      <label>Вид разрешённого использования (ВРИ)</label>
-      <select id="fVRI" multiple></select>
-    </div>
+    <label class="chk"><input type="checkbox" id="fOnlyOpen" checked> Только с открытым приёмом заявок</label>
+    <label class="chk"><input type="checkbox" id="fHideCancelled" checked> Скрывать отменённые</label>
+    <button class="btn ghost" id="btnReset" style="width:100%;margin-top:8px">Сбросить фильтры</button>
+  </aside>
 
-    <div class="filter-group">
-      <label>Вид сделки</label>
-      <select id="fDealType" multiple></select>
-    </div>
-
-    <div class="filter-group">
-      <label>Площадь, м²</label>
-      <div class="range-row">
-        <input type="number" id="fAreaMin" placeholder="от">
-        <input type="number" id="fAreaMax" placeholder="до">
-      </div>
-    </div>
-
-    <div class="filter-group">
-      <label>Начальная цена, ₽</label>
-      <div class="range-row">
-        <input type="number" id="fPriceMin" placeholder="от">
-        <input type="number" id="fPriceMax" placeholder="до">
-      </div>
-    </div>
-
-    <button class="reset-btn" id="resetBtn">Сбросить фильтры</button>
-  </div>
-
-  <div class="main">
+  <section class="main">
     <div class="tabs">
       <div class="tab active" data-view="table">Таблица</div>
       <div class="tab" data-view="map">Карта</div>
     </div>
-
-    <div class="view active" id="viewTable">
-      <div id="tableWrap">
-        <div class="empty-state">
-          <h2>Данных пока нет</h2>
-          <div>Нажмите кнопку «Обновить данные» вверху страницы</div>
-        </div>
+    <div class="views">
+      <div class="view active" id="viewTable">
+        <div id="tableWrap"></div>
+        <div class="pager" id="pager"></div>
+      </div>
+      <div class="view" id="viewMap">
+        <div id="map"></div>
+        <div class="mapbar"><b id="mapInfo"></b><span id="geoInfo"></span></div>
+        <div class="legend" id="legend"></div>
       </div>
     </div>
+  </section>
+</div>
 
-    <div class="view" id="viewMap">
-      <div class="map-controls">
-        <button class="geo-btn" id="geoBtn">Показать отфильтрованные точки на карте</button>
-        <span class="geo-status" id="geoStatus"></span>
-      </div>
-      <div id="map"></div>
+<div class="card" id="card"></div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-box">
+    <h2>Данные</h2>
+    <p class="hint">Выберите регионы и период. Страница скачивает извещения с torgi.gov.ru прямо в вашем браузере и хранит их здесь же. При повторной загрузке докачивается только новое.</p>
+    <div id="loadRegionHost"></div>
+    <label class="lb">За сколько последних дней собрать извещения</label>
+    <input type="number" id="loadDays" min="1" max="120" value="30">
+    <label class="lb">Адрес вашего прокси (необязательно, см. инструкцию в конце окна)</label>
+    <input type="text" id="proxyUrl" placeholder="https://ваш-сайт.ru/proxy.php?key=…">
+    <div class="actions">
+      <button class="btn" id="btnLoad">Загрузить</button>
+      <button class="btn ghost" id="btnStop">Остановить</button>
+      <button class="btn ghost" id="btnClear">Очистить базу</button>
     </div>
+    <div class="bar"><div id="barFill"></div></div>
+    <div id="loadStatus"></div>
+
+    <h3>Кадастровые данные (НСПД)</h3>
+    <p class="hint">Для лотов, которые сейчас отображаются в таблице, подгружает кадастровую стоимость и точные координаты участка. По ним считаются «НЦ / КС» и точки на карте. Работает только через ваш прокси на российском хостинге.</p>
+    <button class="btn" id="btnNspd">Загрузить для отфильтрованных лотов</button>
+    <div id="nspdStatus"></div>
+
+    <div class="actions" style="margin-top:22px"><button class="btn ghost" id="btnClose">Закрыть</button></div>
   </div>
 </div>
 
 <script>
-// ============ НАСТРОЙКИ ============
-const SEED_DAYS = 14;          // сколько дней истории собрать при самом первом обновлении
-const BASE = "https://torgi.gov.ru/new/opendata/7710568760-notice";
-const CORS_PROXY = "https://api.allorigins.win/raw?url=";  // запасной вариант, если сайт блокирует прямые запросы из браузера
-// =====================================
+const BASE_URL = "https://torgi.gov.ru/new/opendata/7710568760-notice";
 
-let rawData = [];
-let filtered = [];
-let sortKey = null, sortDir = 1;
-let leafletMap = null, markersLayer = null;
-const geoCache = {};
-const $ = (id) => document.getElementById(id);
+const REGIONS = {
+  1:'Республика Адыгея',2:'Республика Башкортостан',3:'Республика Бурятия',4:'Республика Алтай',5:'Республика Дагестан',
+  6:'Республика Ингушетия',7:'Кабардино-Балкарская Республика',8:'Республика Калмыкия',9:'Карачаево-Черкесская Республика',
+  10:'Республика Карелия',11:'Республика Коми',12:'Республика Марий Эл',13:'Республика Мордовия',14:'Республика Саха (Якутия)',
+  15:'Республика Северная Осетия — Алания',16:'Республика Татарстан',17:'Республика Тыва',18:'Удмуртская Республика',
+  19:'Республика Хакасия',20:'Чеченская Республика',21:'Чувашская Республика',22:'Алтайский край',23:'Краснодарский край',
+  24:'Красноярский край',25:'Приморский край',26:'Ставропольский край',27:'Хабаровский край',28:'Амурская область',
+  29:'Архангельская область',30:'Астраханская область',31:'Белгородская область',32:'Брянская область',33:'Владимирская область',
+  34:'Волгоградская область',35:'Вологодская область',36:'Воронежская область',37:'Ивановская область',38:'Иркутская область',
+  39:'Калининградская область',40:'Калужская область',41:'Камчатский край',42:'Кемеровская область',43:'Кировская область',
+  44:'Костромская область',45:'Курганская область',46:'Курская область',47:'Ленинградская область',48:'Липецкая область',
+  49:'Магаданская область',50:'Московская область',51:'Мурманская область',52:'Нижегородская область',53:'Новгородская область',
+  54:'Новосибирская область',55:'Омская область',56:'Оренбургская область',57:'Орловская область',58:'Пензенская область',
+  59:'Пермский край',60:'Псковская область',61:'Ростовская область',62:'Рязанская область',63:'Самарская область',
+  64:'Саратовская область',65:'Сахалинская область',66:'Свердловская область',67:'Смоленская область',68:'Тамбовская область',
+  69:'Тверская область',70:'Томская область',71:'Тульская область',72:'Тюменская область',73:'Ульяновская область',
+  74:'Челябинская область',75:'Забайкальский край',76:'Ярославская область',77:'Москва',78:'Санкт-Петербург',
+  79:'Еврейская автономная область',83:'Ненецкий автономный округ',86:'Ханты-Мансийский автономный округ',
+  87:'Чукотский автономный округ',89:'Ямало-Ненецкий автономный округ',91:'Республика Крым',92:'Севастополь'
+};
 
-function loadCache(){
-  try {
-    const raw = localStorage.getItem('zemlyaLots');
-    return raw ? JSON.parse(raw) : [];
-  } catch(e){ return []; }
-}
-function saveCache(lots){
-  localStorage.setItem('zemlyaLots', JSON.stringify(lots));
-  localStorage.setItem('zemlyaLastScan', new Date().toISOString().slice(0,10));
-}
-function getLastScanDate(){
-  return localStorage.getItem('zemlyaLastScan');
+const GROUPS = {
+  izhs:       { label:'ИЖС, жилая застройка, ЛПХ, сады', emoji:'🏠', color:'#4f9d69' },
+  agri:       { label:'Сельскохозяйственные',            emoji:'🌾', color:'#c9a227' },
+  industrial: { label:'Промышленность, транспорт, склады', emoji:'🏭', color:'#7f8fa6' },
+  commercial: { label:'Коммерция, обслуживание',         emoji:'🏪', color:'#d0743c' },
+  forest:     { label:'Лесной фонд',                     emoji:'🌲', color:'#2f7d5b' },
+  water:      { label:'Водный фонд',                     emoji:'💧', color:'#3b8bc2' },
+  special:    { label:'Особо охраняемые, запас',         emoji:'🛡', color:'#9b7bb8' },
+  other:      { label:'Прочие',                          emoji:'📍', color:'#8c8c8c' }
+};
+
+const LABELS = {
+  biddStartTime:'Начало приёма заявок', biddEndTime:'Окончание приёма заявок',
+  privatizationReason:'Основание приватизации', lotStatus:'Статус лота',
+  timeZone:'Часовой пояс'
+};
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-async function fetchJsonSmart(url){
-  try {
-    const r = await fetch(url);
-    if (r.ok) return await r.json();
-  } catch(e){ /* похоже на блокировку CORS/сети - пробуем через прокси */ }
-  try {
-    const r2 = await fetch(CORS_PROXY + encodeURIComponent(url));
-    if (r2.ok) return await r2.json();
-  } catch(e2){ /* и прокси не помог */ }
-  return null;
-}
-
-function toNumber(val){
-  const n = parseFloat(val);
+function toNumber(v){
+  if (v == null || v === '') return null;
+  const n = parseFloat(String(v).replace(/\s/g,'').replace(',','.'));
   return isNaN(n) ? null : n;
+}
+
+function valToText(v){
+  if (v == null) return '';
+  if (Array.isArray(v)) return v.map(valToText).filter(Boolean).join('; ');
+  if (typeof v === 'object'){
+    if (v.name) return String(v.name);
+    if (v.value != null) return valToText(v.value);
+    return Object.values(v).map(valToText).filter(Boolean).join(', ');
+  }
+  if (v === true) return 'Да';
+  if (v === false) return 'Нет';
+  return String(v);
+}
+
+function flattenScalars(obj, out, skip, prefix){
+  if (!obj || typeof obj !== 'object') return;
+  for (const [k, v] of Object.entries(obj)){
+    if (skip && skip.has(k)) continue;
+    if (v == null || v === '') continue;
+    const label = LABELS[k] || (prefix ? prefix + ' / ' + k : k);
+    if (Array.isArray(v) || (typeof v === 'object' && !v.name)){
+      if (Array.isArray(v)) { const t = valToText(v); if (t) out.push([label, t]); }
+      else flattenScalars(v, out, skip, label);
+    } else {
+      const t = valToText(v);
+      if (t && t !== '-') out.push([label, t]);
+    }
+  }
+}
+
+function classifyDeal(procedureName, contractCode, contractName){
+  const c = ((contractCode || '') + ' ' + (contractName || '')).toLowerCase();
+  const p = (procedureName || '').toLowerCase();
+  if (/lease|аренд/.test(c)) return 'Аренда';
+  if (/купли|продаж|sale/.test(c)) return 'Продажа';
+  if (/безвозмезд/.test(c + ' ' + p)) return 'Безвозмездное пользование';
+  if (/аренд/.test(p)) return 'Аренда';
+  if (/собственност|продаж|купл/.test(p)) return 'Продажа';
+  if (/сервитут/.test(p)) return 'Сервитут';
+  return 'Иное';
+}
+
+function landGroup(category, use, name){
+  const c = (category || '').toLowerCase();
+  const u = ((use || '') + ' ' + (name || '')).toLowerCase();
+  if (c.includes('лесного')) return 'forest';
+  if (c.includes('водного')) return 'water';
+  if (c.includes('особо охраняем') || c.includes('запаса')) return 'special';
+  if (c.includes('промышленност')) return 'industrial';
+  if (c.includes('сельскохозяйств')) return 'agri';
+  if (/индивидуальн\S* жилищ|ижс|личного подсобного|лпх|блокированн|малоэтажн|многоэтажн|жилая|жилой|садоводств|огородничеств|дачн|приусадебн/.test(u)) return 'izhs';
+  if (/сельскохоз|растениеводств|животноводств|пашн|сенокос|пастбищ|крестьянск|фермерск|выращиван/.test(u)) return 'agri';
+  if (/торгов|магазин|бытов|общественн|предпринимат|деловое|офис|гостиниц|общественного питания|рынок|развлечен|обслуживан|заправк/.test(u)) return 'commercial';
+  if (/промышленн|производствен|складск|склад|энергетик|транспорт|связи|связь|недр|добыч|карьер/.test(u)) return 'industrial';
+  return 'other';
+}
+
+function derive(r){
+  r.group = landGroup(r.category, r.permittedUse, r.lotName);
+  r.groupLabel = GROUPS[r.group].label;
+  r.cadQuarter = r.cadastralNumber ? String(r.cadastralNumber).split(':').slice(0,3).join(':') : null;
+  r.pricePerM2 = (r.priceMin > 0 && r.areaM2 > 0) ? r.priceMin / r.areaM2 : null;
+  r.pct = (r.priceMin > 0 && r.cadCost > 0) ? r.priceMin / r.cadCost * 100 : null;
+  return r;
 }
 
 function extractLotRows(noticeJson){
   const rows = [];
-  const notice = noticeJson?.exportObject?.structuredObject?.notice;
+  const notice = noticeJson && noticeJson.exportObject && noticeJson.exportObject.structuredObject && noticeJson.exportObject.structuredObject.notice;
   if (!notice) return rows;
 
   const common = notice.commonInfo || {};
-  const bidder = notice.bidderOrg?.orgInfo || {};
-  const conditions = notice.biddConditions || {};
-
-  const procedureName = (common.procedureName || "").toLowerCase();
-  let dealType = null;
-  if (procedureName.includes("аренд")) dealType = "Аренда";
-  else if (procedureName.includes("собственност") || procedureName.includes("продаж") || procedureName.includes("купл")) dealType = "Продажа";
+  const org = (notice.bidderOrg && notice.bidderOrg.orgInfo) || {};
+  const contact = (notice.bidderOrg && notice.bidderOrg.contactInfo) || {};
+  const cond = notice.biddConditions || {};
+  const noticeExtra = [];
+  (notice.additionalDetails || []).forEach(d => {
+    const t = valToText(d.value);
+    if (t) noticeExtra.push([d.name || d.code, t]);
+  });
+  const condExtra = [];
+  flattenScalars(cond, condExtra, new Set(), '');
+  const docNames = (notice.docs || []).map(d => d.name).filter(Boolean);
 
   for (const lot of (notice.lots || [])){
     const info = lot.biddingObjectInfo || {};
     const chars = {};
-    (info.characteristics || []).forEach(c => { chars[c.code] = c.characteristicValue; });
+    const extra = [];
+    (info.characteristics || []).forEach(c => {
+      chars[c.code] = c.characteristicValue;
+      if (c.code === 'PermittedUse' || c.code === 'CadastralNumber' || c.code === 'SquareZU') return;
+      let t = valToText(c.characteristicValue);
+      if (t && c.OKEI && c.OKEI.name) t += ' (' + c.OKEI.name + ')';
+      if (t) extra.push([c.name || c.code, t]);
+    });
+    let contractCode = '', contractName = '';
+    (lot.additionalDetails || []).forEach(d => {
+      const t = valToText(d.value);
+      if (d.code && d.code.indexOf('contractType') >= 0 && d.value && typeof d.value === 'object'){
+        contractCode = d.value.code || ''; contractName = d.value.name || '';
+      }
+      if (t) extra.push([d.name || d.code, t]);
+    });
+    const lotScalars = [];
+    flattenScalars(lot, lotScalars, new Set(['biddingObjectInfo','imageIds','additionalDetails','lotNumber','lotName','lotDescription','priceMin','currency','lotStatus']), '');
 
-    let permittedUse = chars.PermittedUse;
-    if (Array.isArray(permittedUse)){
-      permittedUse = permittedUse.map(v => v?.name || "").filter(Boolean).join("; ");
-    }
-
+    const permitted = valToText(chars.PermittedUse);
     const regNum = common.noticeNumber;
-    const lotNum = lot.lotNumber;
-
-    rows.push({
-      lotId: `${regNum}_${lotNum}`,
-      regNum,
-      dealType,
-      publishDate: common.publishDate,
-      region: info.subjectRF?.name,
-      address: info.estateAddress,
-      category: info.category?.name,
-      permittedUse,
-      cadastralNumber: chars.CadastralNumber,
+    const row = {
+      lotId: regNum + '_' + lot.lotNumber,
+      regNum: regNum,
+      lotNumber: lot.lotNumber,
+      lotStatus: lot.lotStatus || '',
+      lotName: lot.lotName || '',
+      procedureName: common.procedureName || '',
+      biddForm: (common.biddForm && common.biddForm.name) || '',
+      dealType: classifyDeal(common.procedureName, contractCode, contractName),
+      contractType: contractName,
+      publishDate: common.publishDate || '',
+      regionCode: info.subjectRF && info.subjectRF.code,
+      region: (info.subjectRF && info.subjectRF.name) || '',
+      address: info.estateAddress || '',
+      category: (info.category && info.category.name) || '',
+      ownership: (info.ownershipForms && info.ownershipForms.name) || '',
+      permittedUse: permitted,
+      cadastralNumber: chars.CadastralNumber || '',
       areaM2: toNumber(chars.SquareZU),
       priceMin: toNumber(lot.priceMin),
-      biddStart: conditions.biddStartTime,
-      biddEnd: conditions.biddEndTime,
-      organizer: bidder.name,
-      link: common.href,
-    });
+      biddStart: cond.biddStartTime || '',
+      biddEnd: cond.biddEndTime || '',
+      organizer: org.name || '',
+      orgInn: org.INN || '',
+      orgAddress: org.actualAddress || org.legalAddress || '',
+      contactPerson: contact.contPerson || '',
+      contactTel: contact.tel || '',
+      contactEmail: contact.email || '',
+      link: common.href || '',
+      extra: extra.concat(lotScalars, condExtra.filter(x => x[0] !== LABELS.biddStartTime && x[0] !== LABELS.biddEndTime), noticeExtra),
+      docs: docNames
+    };
+    rows.push(derive(row));
   }
   return rows;
 }
 
-function daterange(d1, d2){
-  const days = [];
-  const cur = new Date(d1);
-  while (cur <= d2){ days.push(new Date(cur)); cur.setDate(cur.getDate()+1); }
-  return days;
+function geoQueries(row){
+  const region = row.region || '';
+  let parts = (row.address || '').split(',').map(s => s.trim()).filter(s =>
+    s && !/(^|\s)РФ(\s|$)/.test(s) && !/^Российская Федерация$/i.test(s) && !/^[А-ЯЁ]{2,3}$/.test(s) && !/^\d{6}$/.test(s));
+  const low = region.toLowerCase();
+  parts = parts.filter(p => !low.includes(p.toLowerCase()) && !p.toLowerCase().includes(low));
+  const seen = new Set();
+  const out = [];
+  for (let drop = 0; drop <= 2; drop++){
+    const use = parts.slice(0, Math.max(1, parts.length - drop));
+    if (!use.length) break;
+    const q = [region].concat(use).filter(Boolean).join(', ');
+    if (!seen.has(q)){ seen.add(q); out.push(q); }
+    if (use.length === 1) break;
+  }
+  return out;
 }
-function fmt(d){
-  const p = n => String(n).padStart(2,'0');
-  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}T0000`;
+
+function mercatorToLonLat(x, y){
+  const lon = x / 20037508.34 * 180;
+  const lat = (Math.atan(Math.exp(y / 6378137)) * 2 - Math.PI / 2) * 180 / Math.PI;
+  return [lon, lat];
 }
 
-async function updateData(){
-  const btn = $('updateBtn'), status = $('updateStatus'), errBox = $('errorBox');
-  btn.disabled = true;
-  errBox.style.display = 'none';
+function geometryCenter(geom){
+  if (!geom || !geom.coordinates) return null;
+  const pts = [];
+  (function walk(a){
+    if (typeof a[0] === 'number') { pts.push(a); return; }
+    a.forEach(walk);
+  })(geom.coordinates);
+  if (!pts.length) return null;
+  let sx = 0, sy = 0;
+  pts.forEach(p => { sx += p[0]; sy += p[1]; });
+  let x = sx / pts.length, y = sy / pts.length;
+  if (Math.abs(x) > 180 || Math.abs(y) > 90) return mercatorToLonLat(x, y);
+  return [x, y];
+}
 
-  const existing = loadCache();
-  const existingById = {};
-  existing.forEach(r => { if (r.lotId) existingById[r.lotId] = r; });
+function parseNspd(json, cadNum){
+  const feats = (json && json.data && json.data.features) || (json && json.features) || [];
+  if (!feats.length) return null;
+  const f = feats.find(x => x.properties && x.properties.options && x.properties.options.cad_num === cadNum) || feats[0];
+  const o = (f.properties && f.properties.options) || {};
+  const c = geometryCenter(f.geometry);
+  return {
+    cadCost: toNumber(o.cost_value),
+    cadArea: toNumber(o.specified_area != null ? o.specified_area : (o.declared_area != null ? o.declared_area : o.area)),
+    cadUse: o.permitted_use_established_by_document || '',
+    cadCategory: o.land_record_category_type || '',
+    lat: c ? c[1] : null,
+    lon: c ? c[0] : null
+  };
+}
 
-  const lastScan = getLastScanDate();
-  const today = new Date();
-  const start = lastScan ? new Date(Date.now() - 2*86400000) : new Date(Date.now() - SEED_DAYS*86400000);
+function fmtDay(d){
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + 'T0000';
+}
 
-  const days = daterange(start, today);
-  let newCount = 0;
-  let failedDays = 0;
+</script>
+<script>
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nf = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 });
+const fmtNum = v => (v == null ? '—' : nf.format(v));
+const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('ru-RU') : '—';
+const fmtDT = iso => iso ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
-  for (let i = 0; i < days.length; i++){
-    const day = days[i];
-    const nextDay = new Date(day.getTime() + 86400000);
-    const indexUrl = `${BASE}/data-${fmt(day)}-${fmt(nextDay)}-structure-20240401.json`;
+function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
 
-    status.textContent = `День ${i+1}/${days.length}: ${day.toLocaleDateString('ru-RU')}...`;
-    const indexData = await fetchJsonSmart(indexUrl);
-    if (!indexData){ failedDays++; continue; }
+/* ---------- хранилище (IndexedDB, с запасным вариантом в памяти) ---------- */
+const store = {
+  db: null, mem: {},
+  async init(){
+    try {
+      this.db = await new Promise((res, rej) => {
+        const q = indexedDB.open('zemlya', 1);
+        q.onupgradeneeded = () => q.result.createObjectStore('kv');
+        q.onsuccess = () => res(q.result);
+        q.onerror = () => rej(q.error);
+      });
+    } catch(e){ this.db = null; }
+  },
+  get(k){
+    return new Promise(res => {
+      if (!this.db) return res(this.mem[k]);
+      try {
+        const r = this.db.transaction('kv').objectStore('kv').get(k);
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => res(undefined);
+      } catch(e){ res(this.mem[k]); }
+    });
+  },
+  set(k, v){
+    return new Promise(res => {
+      if (!this.db){ this.mem[k] = v; return res(); }
+      try {
+        const t = this.db.transaction('kv', 'readwrite');
+        t.objectStore('kv').put(v, k);
+        t.oncomplete = () => res();
+        t.onerror = () => res();
+      } catch(e){ this.mem[k] = v; res(); }
+    });
+  }
+};
 
-    const matches = (indexData.listObjects || []).filter(item =>
-      item.documentType === "notice" && item.biddTypeCode === "ZK"
-    );
+/* ---------- состояние ---------- */
+let rawData = [];
+let byId = new Map();
+let cancelled = new Set();
+let doneHrefs = new Set();
+let filtered = [];
+let sortKey = 'publishDate', sortDir = -1;
+let page = 0;
+const PAGE_SIZE = 100;
+let abortLoad = false;
+let userProxy = lsGet('zemlya.proxy') || '';
+const PUBLIC_PROXY = 'https://api.allorigins.win/raw?url=';
+let preferredRoute = null;
 
-    for (const item of matches){
-      const noticeJson = await fetchJsonSmart(item.href);
-      if (!noticeJson) continue;
-      for (const row of extractLotRows(noticeJson)){
-        if (!existingById[row.lotId]){
-          existingById[row.lotId] = row;
-          newCount++;
-        }
-      }
+/* ---------- сеть ---------- */
+async function tryFetch(u, timeout = 30000){
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeout);
+  try {
+    const r = await fetch(u, { signal: ac.signal });
+    if (r.status === 404) return { status: 404 };
+    if (!r.ok) return { status: r.status };
+    return { status: 200, json: await r.json() };
+  } finally { clearTimeout(t); }
+}
+function viaUser(u){ return userProxy + (userProxy.includes('?') ? '&' : '?') + 'url=' + encodeURIComponent(u); }
+async function fetchJsonSmart(url, opts = {}){
+  let routes = [];
+  if (userProxy) routes.push(['через ваш прокси', viaUser]);
+  if (!opts.noDirect) routes.push(['напрямую', u => u]);
+  if (!opts.noPublic) routes.push(['через публичный прокси', u => PUBLIC_PROXY + encodeURIComponent(u)]);
+  if (preferredRoute){
+    const i = routes.findIndex(r => r[0] === preferredRoute);
+    if (i > 0) routes.unshift(routes.splice(i, 1)[0]);
+  }
+  for (const [name, fn] of routes){
+    try {
+      const r = await tryFetch(fn(url));
+      if (r.status === 200){ preferredRoute = name; return r.json; }
+      if (r.status === 404) return null;
+    } catch(e){}
+  }
+  return null;
+}
+async function pool(items, n, worker, onStep){
+  let i = 0;
+  const run = async () => {
+    while (!abortLoad){
+      const k = i++;
+      if (k >= items.length) return;
+      try { await worker(items[k], k); } catch(e){}
+      if (onStep) onStep();
     }
+  };
+  await Promise.all(Array.from({ length: n }, run));
+}
+
+/* ---------- списки с галочками ---------- */
+function initMulti(cfg){
+  const sel = cfg.selected;
+  const wrap = document.createElement('div');
+  wrap.className = 'ms';
+  wrap.innerHTML =
+    '<button type="button" class="ms-btn"><span class="ms-title">' + esc(cfg.label) + '</span>' +
+    '<span class="ms-count"></span><span class="ms-caret">▾</span></button>' +
+    '<div class="ms-panel" hidden><input class="ms-search" type="text" placeholder="Найти в списке…">' +
+    '<div class="ms-actions"><a href="#" data-a="all">Выбрать все</a><a href="#" data-a="none">Сбросить</a></div>' +
+    '<div class="ms-list"></div></div>';
+  cfg.host.appendChild(wrap);
+  const btn = wrap.querySelector('.ms-btn'), panel = wrap.querySelector('.ms-panel');
+  const search = wrap.querySelector('.ms-search'), list = wrap.querySelector('.ms-list');
+  const countEl = wrap.querySelector('.ms-count');
+  let shown = [];
+  function updateCount(){
+    countEl.textContent = sel.size ? String(sel.size) : '';
+    btn.classList.toggle('on', sel.size > 0);
   }
-
-  const nowIso = new Date().toISOString();
-  const fresh = Object.values(existingById).filter(r => !r.biddEnd || r.biddEnd >= nowIso);
-  fresh.sort((a,b) => (b.publishDate||'').localeCompare(a.publishDate||''));
-
-  saveCache(fresh);
-  rawData = fresh;
-
-  if (failedDays === days.length && days.length > 0){
-    errBox.style.display = 'block';
-    errBox.textContent = 'Не удалось подключиться к torgi.gov.ru ни разу — ни напрямую, ни через запасной прокси. Похоже на сетевую блокировку. Откройте консоль браузера (F12 → Console) и пришлите текст ошибки.';
+  function render(){
+    const q = search.value.trim().toLowerCase();
+    const opts = cfg.options();
+    shown = opts.filter(o => !q || o.label.toLowerCase().includes(q));
+    list.innerHTML = shown.map(o =>
+      '<label class="ms-item"><input type="checkbox" value="' + esc(o.value) + '"' + (sel.has(String(o.value)) ? ' checked' : '') + '>' +
+      '<span class="ms-lbl">' + esc(o.label) + '</span>' +
+      (o.count != null ? '<span class="ms-n">' + o.count + '</span>' : '') + '</label>').join('') ||
+      '<div class="ms-empty">Нет значений</div>';
+    updateCount();
   }
-
-  status.textContent = `Готово. Новых лотов: ${newCount}. Всего активных: ${fresh.length}.`;
-  btn.disabled = false;
-
-  populateFilters();
-  applyFilters();
+  btn.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    wrap.classList.toggle('open', !panel.hidden);
+    if (!panel.hidden) render();
+  });
+  search.addEventListener('input', render);
+  list.addEventListener('change', e => {
+    const v = String(e.target.value);
+    if (e.target.checked) sel.add(v); else sel.delete(v);
+    updateCount();
+    cfg.onChange && cfg.onChange();
+  });
+  wrap.querySelector('.ms-actions').addEventListener('click', e => {
+    e.preventDefault();
+    const a = e.target.getAttribute('data-a');
+    if (a === 'all') shown.forEach(o => sel.add(String(o.value)));
+    if (a === 'none') { if (search.value) shown.forEach(o => sel.delete(String(o.value))); else sel.clear(); }
+    render();
+    cfg.onChange && cfg.onChange();
+  });
+  updateCount();
+  return { refresh: () => { if (!panel.hidden) render(); else updateCount(); }, updateCount };
 }
 
-$('updateBtn').addEventListener('click', updateData);
+const FILTERS = [
+  { id: 'dealType',      label: 'Вид сделки',                  field: 'dealType' },
+  { id: 'procedureName', label: 'Вид торгов (процедура)',      field: 'procedureName' },
+  { id: 'region',        label: 'Регион',                      field: 'region' },
+  { id: 'groupLabel',    label: 'Тип участка (как на карте)',  field: 'groupLabel' },
+  { id: 'category',      label: 'Категория земель',            field: 'category' },
+  { id: 'permittedUse',  label: 'Вид разрешённого использования', field: 'permittedUse' },
+  { id: 'ownership',     label: 'Форма собственности',         field: 'ownership' },
+  { id: 'organizer',     label: 'Организатор торгов',          field: 'organizer' }
+];
+const selected = {};
+const multis = {};
 
-rawData = loadCache();
-if (rawData.length){
-  $('updateStatus').textContent = `В базе: ${rawData.length} лотов (сохранено ${getLastScanDate() || 'ранее'})`;
+function countBy(field){
+  const m = new Map();
+  rawData.forEach(r => { const v = r[field]; if (v) m.set(v, (m.get(v) || 0) + 1); });
+  return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ru')).map(([value, count]) => ({ value, label: value, count }));
+}
+function buildFilters(){
+  const host = $('msHost');
+  FILTERS.forEach(f => {
+    selected[f.id] = new Set();
+    multis[f.id] = initMulti({
+      host, label: f.label, selected: selected[f.id],
+      options: () => countBy(f.field),
+      onChange: () => applyFilters()
+    });
+  });
 }
 
-function uniqueSorted(field){ return [...new Set(rawData.map(r => r[field]).filter(Boolean))].sort(); }
-
-function populateFilters(){
-  const regionSel = $('fRegion'); regionSel.innerHTML = '';
-  uniqueSorted('region').forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; regionSel.appendChild(o); });
-
-  const catSel = $('fCategory'); catSel.innerHTML = '';
-  uniqueSorted('category').forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; catSel.appendChild(o); });
-
-  const vriSel = $('fVRI'); vriSel.innerHTML = '';
-  uniqueSorted('permittedUse').forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; vriSel.appendChild(o); });
-
-  const dealSel = $('fDealType'); dealSel.innerHTML = '';
-  uniqueSorted('dealType').forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; dealSel.appendChild(o); });
-}
-
-function getSelectedValues(sel){ return [...sel.selectedOptions].map(o => o.value); }
-
+/* ---------- фильтрация ---------- */
+function num(id){ const v = parseFloat($(id).value); return isNaN(v) ? null : v; }
 function applyFilters(){
-  const regions = getSelectedValues($('fRegion'));
-  const cats = getSelectedValues($('fCategory'));
-  const vris = getSelectedValues($('fVRI'));
-  const dealTypes = getSelectedValues($('fDealType'));
-  const areaMin = parseFloat($('fAreaMin').value), areaMax = parseFloat($('fAreaMax').value);
-  const priceMin = parseFloat($('fPriceMin').value), priceMax = parseFloat($('fPriceMax').value);
+  const q = $('fText').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const aMin = num('fAreaMin'), aMax = num('fAreaMax');
+  const pMin = num('fPriceMin'), pMax = num('fPriceMax');
+  const cMin = num('fCostMin'), cMax = num('fCostMax');
+  const kMin = num('fPctMin'), kMax = num('fPctMax');
+  const dFrom = $('fDateFrom').value ? new Date($('fDateFrom').value + 'T00:00:00') : null;
+  const dTo = $('fDateTo').value ? new Date($('fDateTo').value + 'T23:59:59') : null;
+  const hideCancel = $('fHideCancelled').checked;
+  const onlyOpen = $('fOnlyOpen').checked;
+  const now = Date.now();
+  const sets = FILTERS.map(f => [f.field, selected[f.id]]).filter(x => x[1].size);
 
   filtered = rawData.filter(r => {
-    if (regions.length && !regions.includes(r.region)) return false;
-    if (cats.length && !cats.includes(r.category)) return false;
-    if (vris.length && !vris.includes(r.permittedUse)) return false;
-    if (dealTypes.length && !dealTypes.includes(r.dealType)) return false;
-    if (!isNaN(areaMin) && !(r.areaM2 >= areaMin)) return false;
-    if (!isNaN(areaMax) && !(r.areaM2 <= areaMax)) return false;
-    if (!isNaN(priceMin) && !(r.priceMin >= priceMin)) return false;
-    if (!isNaN(priceMax) && !(r.priceMin <= priceMax)) return false;
+    if (hideCancel && r.cancelled) return false;
+    if (onlyOpen && r.biddEnd && new Date(r.biddEnd).getTime() < now) return false;
+    for (const [field, set] of sets) if (!set.has(String(r[field]))) return false;
+    if (aMin != null && !(r.areaM2 >= aMin)) return false;
+    if (aMax != null && !(r.areaM2 <= aMax)) return false;
+    if (pMin != null && !(r.priceMin >= pMin)) return false;
+    if (pMax != null && !(r.priceMin <= pMax)) return false;
+    if (cMin != null && !(r.cadCost >= cMin)) return false;
+    if (cMax != null && !(r.cadCost <= cMax)) return false;
+    if (kMin != null && !(r.pct >= kMin)) return false;
+    if (kMax != null && !(r.pct <= kMax)) return false;
+    if (dFrom || dTo){
+      if (!r.biddEnd) return false;
+      const d = new Date(r.biddEnd);
+      if (dFrom && d < dFrom) return false;
+      if (dTo && d > dTo) return false;
+    }
+    if (q.length){
+      const hay = (r.cadastralNumber + ' ' + r.address + ' ' + r.lotName + ' ' + r.organizer + ' ' + r.regNum).toLowerCase();
+      for (const t of q) if (!hay.includes(t)) return false;
+    }
     return true;
   });
-
-  $('countBadge').textContent = `Найдено лотов: ${filtered.length} из ${rawData.length}`;
+  page = 0;
+  updateCounters();
   renderTable();
+  if ($('viewMap').classList.contains('active')) refreshMap();
+}
+function updateCounters(){
+  $('cntFiltered').textContent = nf.format(filtered.length);
+  $('cntAll').textContent = nf.format(rawData.length);
 }
 
+/* ---------- таблица ---------- */
+const COLS = [
+  { k: 'region', t: 'Регион' },
+  { k: 'address', t: 'Адрес', cls: 'c-addr' },
+  { k: 'cadastralNumber', t: 'Кад. номер', cls: 'mono' },
+  { k: 'groupLabel', t: 'Тип участка' },
+  { k: 'permittedUse', t: 'ВРИ', cls: 'c-use' },
+  { k: 'dealType', t: 'Сделка' },
+  { k: 'areaM2', t: 'Площадь, м²', num: 1 },
+  { k: 'priceMin', t: 'Нач. цена, ₽', num: 1, price: 1 },
+  { k: 'cadCost', t: 'Кад. стоимость, ₽', num: 1 },
+  { k: 'pct', t: 'НЦ / КС, %', num: 1, pct: 1 },
+  { k: 'pricePerM2', t: '₽ за м²', num: 1 },
+  { k: 'biddEnd', t: 'Заявки до', date: 1 },
+  { k: 'organizer', t: 'Организатор', cls: 'c-org' }
+];
+function sortedRows(){
+  const rows = filtered.slice();
+  const k = sortKey, d = sortDir;
+  rows.sort((a, b) => {
+    const va = a[k], vb = b[k];
+    if (va == null || va === '') return (vb == null || vb === '') ? 0 : 1;
+    if (vb == null || vb === '') return -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * d;
+    return String(va).localeCompare(String(vb), 'ru') * d;
+  });
+  return rows;
+}
 function renderTable(){
   const wrap = $('tableWrap');
-  if (!filtered.length){
-    wrap.innerHTML = rawData.length
-      ? `<div class="empty-state"><h2>Ничего не найдено</h2><div>Попробуйте изменить или сбросить фильтры</div></div>`
-      : `<div class="empty-state"><h2>Данных пока нет</h2><div>Нажмите кнопку «Обновить данные» вверху страницы</div></div>`;
+  if (!rawData.length){
+    wrap.innerHTML = '<div class="empty"><h2>Данных пока нет</h2><div>Нажмите «Данные» вверху и загрузите лоты по выбранным регионам.</div></div>';
+    $('pager').innerHTML = '';
     return;
   }
-  const cols = [
-    ['region','Регион'], ['address','Адрес'], ['category','Категория'],
-    ['permittedUse','ВРИ'], ['dealType','Сделка'], ['areaM2','Площадь, м²'], ['priceMin','Цена, ₽'],
-    ['biddEnd','Приём заявок до'], ['organizer','Организатор']
-  ];
-  let rows = [...filtered];
-  if (sortKey){
-    rows.sort((a,b) => {
-      let va = a[sortKey], vb = b[sortKey];
-      if (typeof va === 'number' || typeof vb === 'number'){ va=va||0; vb=vb||0; return (va-vb)*sortDir; }
-      va=(va||'').toString(); vb=(vb||'').toString();
-      return va.localeCompare(vb,'ru')*sortDir;
-    });
+  if (!filtered.length){
+    wrap.innerHTML = '<div class="empty"><h2>Ничего не найдено</h2><div>Измените или сбросьте фильтры.</div></div>';
+    $('pager').innerHTML = '';
+    return;
   }
-  let html = '<table><thead><tr>';
-  cols.forEach(([key,label]) => { html += `<th data-key="${key}">${label}${sortKey===key ? (sortDir>0?' ▲':' ▼') : ''}</th>`; });
-  html += '</tr></thead><tbody>';
-  rows.forEach(r => {
-    html += '<tr>';
-    cols.forEach(([key]) => {
-      let val = r[key];
-      if (key === 'priceMin'){ val = val ? `<span class="price">${Number(val).toLocaleString('ru-RU')}</span>` : '—'; }
-      else if (key === 'areaM2'){ val = val ? Number(val).toLocaleString('ru-RU') : '—'; }
-      else if (key === 'biddEnd' && val){ val = new Date(val).toLocaleDateString('ru-RU'); }
-      else if (key === 'address' && r.link){ val = `<a href="${r.link}" target="_blank">${val || '—'}</a>`; }
-      else { val = val || '—'; }
-      html += `<td>${val}</td>`;
-    });
-    html += '</tr>';
+  const rows = sortedRows();
+  const pages = Math.ceil(rows.length / PAGE_SIZE);
+  if (page >= pages) page = pages - 1;
+  const slice = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  let h = '<table><thead><tr>';
+  COLS.forEach(c => {
+    h += '<th data-k="' + c.k + '"' + (c.num ? ' class="num"' : '') + '>' + c.t + (sortKey === c.k ? (sortDir > 0 ? ' ▲' : ' ▼') : '') + '</th>';
   });
-  html += '</tbody></table>';
-  wrap.innerHTML = html;
-  wrap.querySelectorAll('th').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.key;
-      if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = 1; }
-      renderTable();
+  h += '</tr></thead><tbody>';
+  slice.forEach(r => {
+    h += '<tr data-id="' + esc(r.lotId) + '"' + (r.cancelled ? ' class="cx"' : '') + '>';
+    COLS.forEach(c => {
+      let v = r[c.k];
+      let cls = c.cls || '';
+      if (c.num) cls += ' num';
+      if (c.pct) v = v == null ? '—' : nf1.format(v);
+      else if (c.num) v = fmtNum(v);
+      else if (c.date) v = fmtDate(v);
+      else v = v ? esc(v) : '—';
+      if (c.price && r.priceMin != null) cls += ' price';
+      h += '<td class="' + cls.trim() + '">' + v + '</td>';
     });
+    h += '</tr>';
   });
+  h += '</tbody></table>';
+  wrap.innerHTML = h;
+  $('pager').innerHTML =
+    '<button id="pgPrev"' + (page === 0 ? ' disabled' : '') + '>← Назад</button>' +
+    '<span>Страница ' + (page + 1) + ' из ' + pages + '</span>' +
+    '<button id="pgNext"' + (page >= pages - 1 ? ' disabled' : '') + '>Вперёд →</button>';
 }
-
-['fRegion','fCategory','fVRI','fDealType'].forEach(id => $(id).addEventListener('change', applyFilters));
-['fAreaMin','fAreaMax','fPriceMin','fPriceMax'].forEach(id => $(id).addEventListener('input', applyFilters));
-
-$('resetBtn').addEventListener('click', () => {
-  $('fRegion').selectedIndex=-1; $('fCategory').selectedIndex=-1; $('fVRI').selectedIndex=-1;
-  $('fDealType').selectedIndex=-1;
-  $('fAreaMin').value=''; $('fAreaMax').value='';
-  $('fPriceMin').value=''; $('fPriceMax').value='';
-  applyFilters();
+$('tableWrap').addEventListener('click', e => {
+  const th = e.target.closest('th');
+  if (th){
+    const k = th.dataset.k;
+    if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = 1; }
+    page = 0; renderTable(); return;
+  }
+  const tr = e.target.closest('tr[data-id]');
+  if (tr){ const r = byId.get(tr.dataset.id); if (r) openCard(r); }
+});
+$('pager').addEventListener('click', e => {
+  if (e.target.id === 'pgPrev' && page > 0){ page--; renderTable(); $('viewTable').scrollTop = 0; }
+  if (e.target.id === 'pgNext'){ page++; renderTable(); $('viewTable').scrollTop = 0; }
 });
 
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    tab.classList.add('active');
-    $('view' + (tab.dataset.view === 'table' ? 'Table' : 'Map')).classList.add('active');
-    if (tab.dataset.view === 'map' && leafletMap) setTimeout(() => leafletMap.invalidateSize(), 50);
+/* ---------- боковая карточка лота ---------- */
+function cardRow(label, value, raw){
+  if (value == null || value === '') return '';
+  return '<div class="kv"><div class="k">' + esc(label) + '</div><div class="v">' + (raw ? value : esc(value)) + '</div></div>';
+}
+function openCard(r){
+  const g = GROUPS[r.group] || GROUPS.other;
+  const hasCoord = r.lat != null && r.lon != null;
+  let h = '<button class="card-close" id="cardClose" title="Закрыть">×</button>';
+  h += '<div class="card-head"><span class="badge" style="background:' + g.color + '">' + g.emoji + ' ' + esc(g.label) + '</span>';
+  h += '<span class="badge deal">' + esc(r.dealType) + '</span>';
+  if (r.cancelled) h += '<span class="badge cxb">Отменено</span>';
+  h += '<h2>' + esc(r.address || r.lotName || 'Без адреса') + '</h2>';
+  h += '<div class="sub">' + esc(r.region) + '</div></div>';
+  h += '<div class="stats">' +
+    '<div><span>Начальная цена</span><b class="price">' + (r.priceMin ? fmtNum(r.priceMin) + ' ₽' : (r.priceMin === 0 ? '0 ₽' : '—')) + '</b></div>' +
+    '<div><span>Кадастровая стоимость</span><b>' + (r.cadCost != null ? fmtNum(r.cadCost) + ' ₽' : '—') + '</b></div>' +
+    '<div><span>НЦ / КС</span><b>' + (r.pct != null ? nf1.format(r.pct) + ' %' : '—') + '</b></div>' +
+    '<div><span>Площадь</span><b>' + (r.areaM2 != null ? fmtNum(r.areaM2) + ' м²' : '—') + '</b></div>' +
+    '<div><span>Цена за м²</span><b>' + (r.pricePerM2 != null ? nf1.format(r.pricePerM2) + ' ₽' : '—') + '</b></div>' +
+    '<div><span>Заявки до</span><b>' + fmtDate(r.biddEnd) + '</b></div></div>';
+  if (r.cadCost == null) h += '<div class="note">Кадастровая стоимость не загружена. Кнопка «Данные» → «Кадастровые данные (НСПД)».</div>';
+  h += '<div class="kvs">';
+  h += cardRow('Извещение', r.link ? '<a href="' + esc(r.link) + '" target="_blank" rel="noopener">' + esc(r.regNum) + ' · лот ' + esc(r.lotNumber) + '</a>' : r.regNum, true);
+  h += cardRow('Вид торгов', r.procedureName);
+  h += cardRow('Форма', r.biddForm);
+  h += cardRow('Вид договора', r.contractType);
+  h += cardRow('Статус лота', r.lotStatus);
+  h += cardRow('Опубликовано', fmtDT(r.publishDate));
+  h += cardRow('Начало приёма заявок', fmtDT(r.biddStart));
+  h += cardRow('Окончание приёма заявок', fmtDT(r.biddEnd));
+  h += cardRow('Кадастровый номер', r.cadastralNumber);
+  h += cardRow('Кадастровый квартал', r.cadQuarter);
+  h += cardRow('Категория земель', r.category);
+  h += cardRow('ВРИ', r.permittedUse);
+  h += cardRow('Форма собственности', r.ownership);
+  if (r.cadArea != null) h += cardRow('Площадь по кадастру', fmtNum(r.cadArea) + ' м²');
+  h += cardRow('Наименование лота', r.lotName);
+  h += cardRow('Организатор', r.organizer);
+  h += cardRow('ИНН организатора', r.orgInn);
+  h += cardRow('Адрес организатора', r.orgAddress);
+  h += cardRow('Контактное лицо', r.contactPerson);
+  h += cardRow('Телефон', r.contactTel);
+  h += cardRow('Email', r.contactEmail ? '<a href="mailto:' + esc(r.contactEmail) + '">' + esc(r.contactEmail) + '</a>' : '', true);
+  (r.extra || []).forEach(p => { h += cardRow(p[0], p[1]); });
+  if (r.docs && r.docs.length) h += cardRow('Документы', r.docs.map(esc).join('<br>'), true);
+  if (hasCoord){
+    const ll = r.lon + '%2C' + r.lat;
+    h += cardRow('Координаты', r.lat.toFixed(5) + ', ' + r.lon.toFixed(5) + (r.approx ? ' (приблизительно, по адресу)' : ' (по данным НСПД)') +
+      ' · <a target="_blank" rel="noopener" href="https://yandex.ru/maps/?ll=' + ll + '&z=16&pt=' + ll + '&l=sat%2Cskl">Яндекс.Карты</a>', true);
+  }
+  h += '</div>';
+  const c = $('card');
+  c.innerHTML = h;
+  c.classList.add('open');
+}
+$('card').addEventListener('click', e => { if (e.target.id === 'cardClose') $('card').classList.remove('open'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('card').classList.remove('open'); });
+
+/* ---------- карта ---------- */
+let map = null, cluster = null;
+const iconCache = {};
+function iconFor(group){
+  if (iconCache[group]) return iconCache[group];
+  const g = GROUPS[group] || GROUPS.other;
+  iconCache[group] = L.divIcon({
+    className: 'pin',
+    html: '<div class="pin-in" style="background:' + g.color + '">' + g.emoji + '</div>',
+    iconSize: [32, 32], iconAnchor: [16, 16]
   });
-});
-
+  return iconCache[group];
+}
 function initMap(){
-  leafletMap = L.map('map').setView([61, 90], 3);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', maxZoom: 18 }).addTo(leafletMap);
-  markersLayer = L.layerGroup().addTo(leafletMap);
+  if (map) return;
+  map = L.map('map', { preferCanvas: true }).setView([56, 60], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 18 }).addTo(map);
+  cluster = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 45 });
+  map.addLayer(cluster);
+  const lg = $('legend');
+  lg.innerHTML = Object.entries(GROUPS).map(([k, g]) =>
+    '<div><span class="dot" style="background:' + g.color + '">' + g.emoji + '</span>' + esc(g.label) + '</div>').join('');
 }
-initMap();
-
-async function geocode(address){
-  if (geoCache[address]) return geoCache[address];
-  const url = `https://nominatim.openstreetmap.org/search?format=json&countrycodes=ru&limit=1&q=${encodeURIComponent(address)}`;
-  try{
-    const res = await fetch(url);
-    const data = await res.json();
-    const result = data && data[0] ? { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) } : null;
-    geoCache[address] = result;
-    return result;
-  } catch(e){ return null; }
+function refreshMap(){
+  initMap();
+  setTimeout(() => map.invalidateSize(), 30);
+  cluster.clearLayers();
+  const markers = [];
+  let withCoord = 0;
+  filtered.forEach(r => {
+    if (r.lat == null || r.lon == null) return;
+    withCoord++;
+    const m = L.marker([r.lat, r.lon], { icon: iconFor(r.group), title: r.address });
+    m.on('click', () => openCard(r));
+    markers.push(m);
+  });
+  cluster.addLayers(markers);
+  $('mapInfo').textContent = 'На карте: ' + nf.format(withCoord) + ' из ' + nf.format(filtered.length);
+  startGeocoding();
 }
 
-$('geoBtn').addEventListener('click', async () => {
-  if (!filtered.length) return;
-  const btn = $('geoBtn'), status = $('geoStatus');
-  btn.disabled = true;
-  markersLayer.clearLayers();
-  const toGeocode = filtered.slice(0, 150);
-  if (filtered.length > 150){ status.textContent = `Внимание: показаны первые 150 из ${filtered.length} — сузьте фильтры для остальных.`; }
-  let found = 0; const bounds = [];
-  for (let i=0; i<toGeocode.length; i++){
-    const row = toGeocode[i];
-    status.textContent = `Определяю координаты: ${i+1} / ${toGeocode.length}...`;
-    if (!row.address) continue;
-    const pos = await geocode(row.address);
-    if (pos){
-      found++; bounds.push([pos.lat, pos.lon]);
-      const marker = L.circleMarker([pos.lat, pos.lon], { radius:6, color:'#c68a3e', fillColor:'#c68a3e', fillOpacity:0.8, weight:1.5 });
-      const price = row.priceMin ? Number(row.priceMin).toLocaleString('ru-RU')+' ₽' : '—';
-      const area = row.areaM2 ? Number(row.areaM2).toLocaleString('ru-RU')+' м²' : '—';
-      marker.bindPopup(`<div class="popup-title">${row.address || 'Без адреса'}</div><div class="popup-row">Регион: ${row.region || '—'}</div><div class="popup-row">ВРИ: ${row.permittedUse || '—'}</div><div class="popup-row">Площадь: ${area}</div><div class="popup-row">Цена: ${price}</div>${row.link ? `<div class="popup-row"><a href="${row.link}" target="_blank">Открыть на torgi.gov.ru</a></div>` : ''}`);
-      marker.addTo(markersLayer);
+/* геокодер: координаты по адресу (приблизительно), с кэшем */
+let geoRun = 0;
+let geoQ = {};
+let geoBusy = false;
+async function geocodeOne(q){
+  if (q in geoQ) return geoQ[q];
+  const u = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ru&q=' + encodeURIComponent(q);
+  try {
+    const r = await fetch(u);
+    if (!r.ok) return undefined;
+    const j = await r.json();
+    geoQ[q] = j && j[0] ? { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon) } : null;
+    await sleep(1100);
+    return geoQ[q];
+  } catch(e){ return undefined; }
+}
+async function startGeocoding(){
+  geoRun++;
+  if (geoBusy) return;          // уже идёт цикл: он заметит смену выборки и начнёт заново
+  geoBusy = true;
+  try {
+    let restart = true;
+    while (restart){
+      restart = false;
+      const cur = geoRun;
+      const todo = filtered.filter(r => r.lat == null && !r.geoFail && r.address);
+      if (!todo.length){ $('geoInfo').textContent = 'Координаты определены для всех лотов выборки'; break; }
+      $('geoInfo').textContent = 'Определяю координаты: осталось ' + nf.format(todo.length);
+      let changed = 0;
+      for (const r of todo){
+        if (cur !== geoRun){ restart = true; break; }
+        if (!$('viewMap').classList.contains('active')) return;
+        const qs = geoQueries(r);
+        let found = null, failed = false;
+        for (let i = 0; i < qs.length; i++){
+          const res = await geocodeOne(qs[i]);
+          if (res === undefined){ failed = true; break; }
+          if (res){ found = res; break; }
+        }
+        if (found){
+          r.lat = found.lat; r.lon = found.lon; r.approx = true;
+          const m = L.marker([r.lat, r.lon], { icon: iconFor(r.group), title: r.address });
+          m.on('click', () => openCard(r));
+          cluster.addLayer(m);
+          changed++;
+          $('mapInfo').textContent = 'На карте: ' + nf.format(filtered.filter(x => x.lat != null).length) + ' из ' + nf.format(filtered.length);
+          if (changed % 25 === 0) saveLots();
+        } else if (!failed){ r.geoFail = true; }
+        else { await sleep(3000); }
+        if (cur === geoRun) $('geoInfo').textContent = 'Определяю координаты: осталось ' + nf.format(filtered.filter(x => x.lat == null && !x.geoFail && x.address).length);
+      }
+      if (!restart) saveLots();
     }
-    await new Promise(r => setTimeout(r, 1100));
-  }
-  status.textContent = `Готово: найдено координат для ${found} из ${toGeocode.length} адресов.`;
-  if (bounds.length) leafletMap.fitBounds(bounds, { padding:[30,30] });
-  btn.disabled = false;
-});
+  } finally { geoBusy = false; }
+}
 
-populateFilters();
-applyFilters();
+/* ---------- вкладки ---------- */
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  const v = t.dataset.view;
+  $(v === 'table' ? 'viewTable' : 'viewMap').classList.add('active');
+  if (v === 'map') refreshMap(); else geoRun++;
+}));
+
+/* ---------- сохранение ---------- */
+let saveTimer = null;
+function saveLots(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    await store.set('lots', rawData);
+    await store.set('cancelled', [...cancelled]);
+    await store.set('done', [...doneHrefs]);
+    await store.set('geoQ', geoQ);
+  }, 400);
+}
+
+/* ---------- загрузка данных с torgi.gov.ru ---------- */
+function setBar(p, text){
+  $('barFill').style.width = Math.max(0, Math.min(100, p)) + '%';
+  $('loadStatus').textContent = text;
+}
+async function runLoad(){
+  const codes = new Set([...loadSel]);
+  if (!codes.size){ alert('Выберите хотя бы один регион для загрузки.'); return; }
+  const days = Math.max(1, Math.min(120, parseInt($('loadDays').value) || 30));
+  userProxy = $('proxyUrl').value.trim();
+  lsSet('zemlya.proxy', userProxy);
+  lsSet('zemlya.days', String(days));
+  lsSet('zemlya.regions', JSON.stringify([...codes]));
+  abortLoad = false;
+  $('btnLoad').disabled = true;
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dayList = [];
+  for (let i = 0; i < days; i++) dayList.push(new Date(today.getTime() - i * 86400000));
+  const todayKey = fmtDay(today), yKey = fmtDay(new Date(today.getTime() - 86400000));
+
+  // 1. индексы по дням
+  const items = [];
+  let dayDone = 0, dayFail = 0;
+  await pool(dayList, 4, async d => {
+    const key = fmtDay(d);
+    let idx = null;
+    const cacheKey = 'idx:' + key;
+    if (key !== todayKey && key !== yKey) idx = await store.get(cacheKey);
+    if (!idx){
+      const next = new Date(d.getTime() + 86400000);
+      const url = BASE_URL + '/data-' + key + '-' + fmtDay(next) + '-structure-20240401.json';
+      const j = await fetchJsonSmart(url);
+      if (!j){ dayFail++; return; }
+      idx = (j.listObjects || []).filter(x => x.biddTypeCode === 'ZK')
+        .map(x => ({ t: x.documentType, r: x.regNum, c: String(x.subjectEstateCode || ''), h: x.href }));
+      if (key !== todayKey && key !== yKey) await store.set(cacheKey, idx);
+    }
+    idx.forEach(x => items.push(x));
+  }, () => { dayDone++; setBar(dayDone / dayList.length * 25, 'Просмотр дней: ' + dayDone + ' из ' + dayList.length + (dayFail ? ' · не открылось: ' + dayFail : '')); });
+
+  items.filter(x => x.t === 'noticeCancel').forEach(x => cancelled.add(x.r));
+  const targets = items.filter(x => x.t === 'notice' && codes.has(x.c) && !doneHrefs.has(x.h));
+  let ok = 0, fail = 0, added = 0;
+  const total = targets.length;
+  setBar(25, 'Найдено новых извещений по выбранным регионам: ' + nf.format(total));
+
+  // 2. карточки извещений
+  await pool(targets, 6, async it => {
+    const j = await fetchJsonSmart(it.h);
+    if (!j){ fail++; return; }
+    extractLotRows(j).forEach(row => {
+      const old = byId.get(row.lotId);
+      if (!old || (row.publishDate || '') > (old.publishDate || '')){
+        if (old){ row.lat = old.lat; row.lon = old.lon; row.approx = old.approx; row.cadCost = old.cadCost; row.cadArea = old.cadArea; row.cadStatus = old.cadStatus; derive(row); }
+        byId.set(row.lotId, row);
+        added++;
+      }
+    });
+    doneHrefs.add(it.h);
+    ok++;
+  }, () => {
+    const n = ok + fail;
+    setBar(25 + n / Math.max(1, total) * 75, 'Загружено извещений: ' + nf.format(ok) + ' из ' + nf.format(total) + (fail ? ' · ошибок: ' + fail : '') + ' · канал: ' + (preferredRoute || '—'));
+    if (n % 150 === 0) { finalizeData(false); }
+  });
+
+  finalizeData(true);
+  setBar(100, (abortLoad ? 'Остановлено. ' : 'Готово. ') + 'Новых лотов: ' + nf.format(added) + ' · извещений загружено: ' + nf.format(ok) + (fail ? ' · не удалось: ' + fail + ' (повторите загрузку, они догрузятся)' : '') + (dayFail ? ' · дней без ответа: ' + dayFail : ''));
+  $('btnLoad').disabled = false;
+}
+function finalizeData(full){
+  const nowMs = Date.now();
+  byId.forEach((r, id) => {
+    r.cancelled = cancelled.has(r.regNum);
+    if (r.biddEnd && nowMs - new Date(r.biddEnd).getTime() > 14 * 86400000) byId.delete(id);
+  });
+  rawData = [...byId.values()];
+  refreshFilterLists();
+  applyFilters();
+  saveLots();
+}
+function refreshFilterLists(){ Object.values(multis).forEach(m => m.refresh()); }
+
+/* ---------- кадастровые данные (НСПД) ---------- */
+async function runNspd(){
+  userProxy = $('proxyUrl').value.trim();
+  lsSet('zemlya.proxy', userProxy);
+  const todo = filtered.filter(r => r.cadastralNumber && r.cadStatus !== 'ok' && r.cadStatus !== 'nf');
+  if (!todo.length){ $('nspdStatus').textContent = 'Для выбранных лотов кадастровые данные уже есть или кадастровых номеров нет.'; return; }
+  if (todo.length > 1500 && !confirm('Лотов в выборке: ' + todo.length + '. Загрузка займёт много времени. Продолжить?')) return;
+  abortLoad = false;
+  $('btnNspd').disabled = true;
+  let ok = 0, nf0 = 0, err = 0;
+  await pool(todo, 3, async r => {
+    const url = 'https://nspd.gov.ru/api/geoportal/v2/search/geoportal?thematicSearchId=1&query=' + encodeURIComponent(r.cadastralNumber);
+    const j = await fetchJsonSmart(url, { noPublic: true });
+    if (!j){ err++; return; }
+    const p = parseNspd(j, r.cadastralNumber);
+    if (!p){ r.cadStatus = 'nf'; nf0++; return; }
+    r.cadCost = p.cadCost; r.cadArea = p.cadArea; r.cadStatus = 'ok';
+    if (p.lat != null){ r.lat = p.lat; r.lon = p.lon; r.approx = false; }
+    derive(r);
+    ok++;
+  }, () => {
+    $('nspdStatus').textContent = 'Обработано: ' + (ok + nf0 + err) + ' из ' + todo.length + ' · получено: ' + ok + ' · не найдено: ' + nf0 + ' · ошибок: ' + err;
+    if ((ok + nf0 + err) % 25 === 0) { updateCounters(); renderTable(); saveLots(); }
+  });
+  applyFilters();
+  saveLots();
+  $('btnNspd').disabled = false;
+  if (err && !ok) $('nspdStatus').textContent += '. Сервер НСПД не ответил из браузера. Нужен свой прокси-адрес (инструкция ниже).';
+}
+
+/* ---------- CSV ---------- */
+function exportCsv(){
+  const cols = COLS.map(c => [c.k, c.t]).concat([['regNum', 'Номер извещения'], ['lotNumber', 'Лот'], ['procedureName', 'Вид торгов'], ['category', 'Категория земель'], ['ownership', 'Форма собственности'], ['lat', 'Широта'], ['lon', 'Долгота'], ['link', 'Ссылка']]);
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const lines = [cols.map(c => q(c[1])).join(';')];
+  sortedRows().forEach(r => lines.push(cols.map(c => q(r[c[0]])).join(';')));
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'lots.csv';
+  a.click();
+}
+
+/* ---------- запуск ---------- */
+const loadSel = new Set();
+async function boot(){
+  await store.init();
+  const lots = await store.get('lots');
+  if (Array.isArray(lots)) lots.forEach(r => { derive(r); byId.set(r.lotId, r); });
+  cancelled = new Set(await store.get('cancelled') || []);
+  doneHrefs = new Set(await store.get('done') || []);
+  geoQ = await store.get('geoQ') || {};
+
+  buildFilters();
+  try { JSON.parse(lsGet('zemlya.regions') || '[]').forEach(c => loadSel.add(String(c))); } catch(e){}
+  initMulti({
+    host: $('loadRegionHost'), label: 'Регионы для загрузки', selected: loadSel,
+    options: () => Object.entries(REGIONS).map(([c, n]) => ({ value: c, label: n + ' (' + c + ')' })),
+    onChange: () => {}
+  });
+  $('loadDays').value = lsGet('zemlya.days') || '30';
+  $('proxyUrl').value = userProxy;
+
+  rawData = [...byId.values()];
+  finalizeData(false);
+  if (!rawData.length) $('modal').hidden = false;
+
+  ['fText', 'fAreaMin', 'fAreaMax', 'fPriceMin', 'fPriceMax', 'fCostMin', 'fCostMax', 'fPctMin', 'fPctMax'].forEach(id => {
+    let t; $(id).addEventListener('input', () => { clearTimeout(t); t = setTimeout(applyFilters, 250); });
+  });
+  ['fDateFrom', 'fDateTo', 'fHideCancelled', 'fOnlyOpen'].forEach(id => $(id).addEventListener('change', applyFilters));
+  $('btnReset').addEventListener('click', () => {
+    Object.values(selected).forEach(s => s.clear());
+    document.querySelectorAll('.sidebar input[type=text], .sidebar input[type=number], .sidebar input[type=date]').forEach(i => i.value = '');
+    refreshFilterLists();
+    applyFilters();
+  });
+  $('btnData').addEventListener('click', () => { $('modal').hidden = false; });
+  $('btnClose').addEventListener('click', () => { $('modal').hidden = true; });
+  $('btnLoad').addEventListener('click', runLoad);
+  $('btnStop').addEventListener('click', () => { abortLoad = true; });
+  $('btnNspd').addEventListener('click', runNspd);
+  $('btnCsv').addEventListener('click', exportCsv);
+  $('btnClear').addEventListener('click', async () => {
+    if (!confirm('Удалить все загруженные лоты из этого браузера?')) return;
+    byId.clear(); cancelled.clear(); doneHrefs.clear(); geoQ = {}; rawData = [];
+    await store.set('lots', []); await store.set('cancelled', []); await store.set('done', []); await store.set('geoQ', {});
+    refreshFilterLists(); applyFilters();
+  });
+}
+boot();
+
 </script>
 </body>
 </html>
