@@ -177,10 +177,10 @@ td.num{white-space:nowrap}
 <div class="modal" id="modal" hidden>
   <div class="modal-box">
     <h2>Данные</h2>
-    <p class="hint">Выберите регионы и период. Страница скачивает извещения с torgi.gov.ru прямо в вашем браузере и хранит их здесь же. При повторной загрузке докачивается только новое.</p>
+    <p class="hint">По умолчанию выбраны все регионы России — можно сузить список, если нужны конкретные. Страница скачивает извещения с torgi.gov.ru прямо в вашем браузере и хранит их здесь же, в этом браузере. Загрузка не обязана забирать всё за один раз: нажимайте «Загрузить» повторно (в том числе в другой день) — уже сохранённые лоты не скачиваются заново, докачиваются только новые, и со временем в базе накопятся все актуальные лоты по выбранным регионам.</p>
     <div id="loadRegionHost"></div>
-    <label class="lb">За сколько последних дней собрать извещения</label>
-    <input type="number" id="loadDays" min="1" max="120" value="30">
+    <label class="lb">За сколько последних дней собрать извещения (для первой пробной загрузки лучше небольшое число — по всей стране в день публикуется несколько сотен извещений)</label>
+    <input type="number" id="loadDays" min="1" max="120" value="3">
     <label class="lb">Адрес вашего прокси (необязательно, см. инструкцию в конце окна)</label>
     <input type="text" id="proxyUrl" placeholder="https://ваш-сайт.ru/proxy.php?key=…">
     <div class="actions">
@@ -190,6 +190,7 @@ td.num{white-space:nowrap}
     </div>
     <div class="bar"><div id="barFill"></div></div>
     <div id="loadStatus"></div>
+    <div class="note" id="loadError" hidden style="border-color:var(--danger);background:#c8604e22;color:#f0c4bc"></div>
 
     <h3>Кадастровые данные (НСПД)</h3>
     <p class="hint">Для лотов, которые сейчас отображаются в таблице, подгружает кадастровую стоимость и точные координаты участка. По ним считаются «НЦ / КС» и точки на карте. Работает только через ваш прокси на российском хостинге.</p>
@@ -515,7 +516,6 @@ let page = 0;
 const PAGE_SIZE = 100;
 let abortLoad = false;
 let userProxy = lsGet('zemlya.proxy') || '';
-const PUBLIC_PROXY = 'https://api.allorigins.win/raw?url=';
 let preferredRoute = null;
 
 /* ---------- сеть ---------- */
@@ -530,11 +530,15 @@ async function tryFetch(u, timeout = 30000){
   } finally { clearTimeout(t); }
 }
 function viaUser(u){ return userProxy + (userProxy.includes('?') ? '&' : '?') + 'url=' + encodeURIComponent(u); }
+const PUBLIC_PROXIES = [
+  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+  u => 'https://corsproxy.io/?url=' + encodeURIComponent(u)
+];
 async function fetchJsonSmart(url, opts = {}){
   let routes = [];
   if (userProxy) routes.push(['через ваш прокси', viaUser]);
   if (!opts.noDirect) routes.push(['напрямую', u => u]);
-  if (!opts.noPublic) routes.push(['через публичный прокси', u => PUBLIC_PROXY + encodeURIComponent(u)]);
+  if (!opts.noPublic) PUBLIC_PROXIES.forEach((fn, i) => routes.push(['публичный прокси #' + (i + 1), fn]));
   if (preferredRoute){
     const i = routes.findIndex(r => r[0] === preferredRoute);
     if (i > 0) routes.unshift(routes.splice(i, 1)[0]);
@@ -578,8 +582,8 @@ function initMulti(cfg){
   const countEl = wrap.querySelector('.ms-count');
   let shown = [];
   function updateCount(){
-    countEl.textContent = sel.size ? String(sel.size) : '';
-    btn.classList.toggle('on', sel.size > 0);
+    if (cfg.allLabel){ countEl.textContent = cfg.allLabel(sel.size); btn.classList.toggle('on', false); }
+    else { countEl.textContent = sel.size ? String(sel.size) : ''; btn.classList.toggle('on', sel.size > 0); }
   }
   function render(){
     const q = search.value.trim().toLowerCase();
@@ -1029,6 +1033,20 @@ async function runLoad(){
   finalizeData(true);
   setBar(100, (abortLoad ? 'Остановлено. ' : 'Готово. ') + 'Новых лотов: ' + nf.format(added) + ' · извещений загружено: ' + nf.format(ok) + (fail ? ' · не удалось: ' + fail + ' (повторите загрузку, они догрузятся)' : '') + (dayFail ? ' · дней без ответа: ' + dayFail : ''));
   $('btnLoad').disabled = false;
+
+  const totalTried = dayList.length;
+  const errBox = $('loadError');
+  if (dayFail === totalTried && totalTried > 0){
+    errBox.hidden = false;
+    errBox.innerHTML = '<b>Не удалось подключиться к torgi.gov.ru ни разу.</b> Проверено каналов: напрямую' + (userProxy ? ', через ваш прокси' : '') + ', через публичный прокси — все вернули ошибку. ' +
+      'Откройте инструменты разработчика (клавиша F12) → вкладка Console, и пришлите мне текст красных строк — по нему я пойму точную причину.' +
+      (userProxy ? '' : ' Если это повторяется — самый надёжный вариант: свой прокси-скрипт на вашем хостинге (инструкция ниже, поле «Адрес вашего прокси»).');
+  } else if (total > 0 && ok === 0){
+    errBox.hidden = false;
+    errBox.innerHTML = '<b>Список дней получен, но ни одно извещение не загрузилось.</b> Похоже, доступны только индексы, а сами карточки лотов блокируются. Пришлите мне, пожалуйста, текст ошибки из вкладки Console (F12).';
+  } else {
+    errBox.hidden = true;
+  }
 }
 function finalizeData(full){
   const nowMs = Date.now();
@@ -1097,11 +1115,16 @@ async function boot(){
   geoQ = await store.get('geoQ') || {};
 
   buildFilters();
-  try { JSON.parse(lsGet('zemlya.regions') || '[]').forEach(c => loadSel.add(String(c))); } catch(e){}
+  try {
+    const saved = JSON.parse(lsGet('zemlya.regions') || 'null');
+    if (Array.isArray(saved) && saved.length) saved.forEach(c => loadSel.add(String(c)));
+    else Object.keys(REGIONS).forEach(c => loadSel.add(String(c))); // по умолчанию — вся Россия
+  } catch(e){ Object.keys(REGIONS).forEach(c => loadSel.add(String(c))); }
   initMulti({
     host: $('loadRegionHost'), label: 'Регионы для загрузки', selected: loadSel,
     options: () => Object.entries(REGIONS).map(([c, n]) => ({ value: c, label: n + ' (' + c + ')' })),
-    onChange: () => {}
+    onChange: () => {},
+    allLabel: n => n === Object.keys(REGIONS).length ? 'Все регионы (' + n + ')' : n + ' из ' + Object.keys(REGIONS).length + ' регионов'
   });
   $('loadDays').value = lsGet('zemlya.days') || '30';
   $('proxyUrl').value = userProxy;
