@@ -308,10 +308,24 @@ function landGroup(category, use, name){
   return 'other';
 }
 
+// Полный номер участка: АА:ББ:ВВВВВВВ:ГГГГ (регион:район:квартал:участок).
+// Если сегмента с номером участка нет или он "0"/"00.." — участок ещё не
+// поставлен на кадастровый учёт, известен только квартал. Искать такой
+// "номер" на кадастровой карте нельзя: поиск по неполному коду может найти
+// случайный чужой объект внутри квартала и дать неверные координаты.
+function isParcelCadastral(cad){
+  if (!cad) return false;
+  const parts = String(cad).trim().split(':');
+  if (parts.length < 4) return false;
+  const last = parts[3].trim();
+  return /^[1-9]\d*$/.test(last);
+}
+
 function derive(r){
   r.group = landGroup(r.category, r.permittedUse, r.lotName);
   r.groupLabel = GROUPS[r.group].label;
   r.cadQuarter = r.cadastralNumber ? String(r.cadastralNumber).split(':').slice(0,3).join(':') : null;
+  r.hasParcel = isParcelCadastral(r.cadastralNumber);
   r.pricePerM2 = (r.priceMin > 0 && r.areaM2 > 0) ? r.priceMin / r.areaM2 : null;
   r.pct = (r.priceMin > 0 && r.cadCost > 0) ? r.priceMin / r.cadCost * 100 : null;
   return r;
@@ -806,7 +820,9 @@ function openCard(r){
     '<div><span>Площадь</span><b>' + (r.areaM2 != null ? fmtNum(r.areaM2) + ' м²' : '—') + '</b></div>' +
     '<div><span>Цена за м²</span><b>' + (r.pricePerM2 != null ? nf1.format(r.pricePerM2) + ' ₽' : '—') + '</b></div>' +
     '<div><span>Заявки до</span><b>' + fmtDate(r.biddEnd) + '</b></div></div>';
-  if (r.cadCost == null) h += '<div class="note">Кадастровая стоимость не загружена. Кнопка «Данные» → «Кадастровые данные (НСПД)».</div>';
+  if (r.cadastralNumber && !r.hasParcel){
+    h += '<div class="note">Участок известен только в границах кадастрового квартала — конкретный номер участку ещё не присвоен (не поставлен на кадастровый учёт). Кадастровая стоимость недоступна, координаты на карте определены приблизительно по адресу.</div>';
+  } else if (r.cadCost == null) h += '<div class="note">Кадастровая стоимость не загружена. Кнопка «Данные» → «Кадастровые данные (НСПД)».</div>';
   h += '<div class="kvs">';
   h += cardRow('Извещение', r.link ? '<a href="' + esc(r.link) + '" target="_blank" rel="noopener">' + esc(r.regNum) + ' · лот ' + esc(r.lotNumber) + '</a>' : r.regNum, true);
   h += cardRow('Вид торгов', r.procedureName);
@@ -1065,8 +1081,14 @@ function refreshFilterLists(){ Object.values(multis).forEach(m => m.refresh()); 
 async function runNspd(){
   userProxy = $('proxyUrl').value.trim();
   lsSet('zemlya.proxy', userProxy);
-  const todo = filtered.filter(r => r.cadastralNumber && r.cadStatus !== 'ok' && r.cadStatus !== 'nf');
-  if (!todo.length){ $('nspdStatus').textContent = 'Для выбранных лотов кадастровые данные уже есть или кадастровых номеров нет.'; return; }
+  const todo = filtered.filter(r => r.hasParcel && r.cadStatus !== 'ok' && r.cadStatus !== 'nf');
+  const skippedNoParcel = filtered.filter(r => r.cadastralNumber && !r.hasParcel).length;
+  if (!todo.length){
+    $('nspdStatus').textContent = skippedNoParcel
+      ? 'В выборке ' + skippedNoParcel + ' участков без присвоенного номера (известен только квартал) — для них координаты берутся по адресу, кадастровый поиск для них не выполняется. Для остальных данные уже загружены.'
+      : 'Для выбранных лотов кадастровые данные уже есть или кадастровых номеров нет.';
+    return;
+  }
   if (todo.length > 1500 && !confirm('Лотов в выборке: ' + todo.length + '. Загрузка займёт много времени. Продолжить?')) return;
   abortLoad = false;
   $('btnNspd').disabled = true;
@@ -1082,7 +1104,8 @@ async function runNspd(){
     derive(r);
     ok++;
   }, () => {
-    $('nspdStatus').textContent = 'Обработано: ' + (ok + nf0 + err) + ' из ' + todo.length + ' · получено: ' + ok + ' · не найдено: ' + nf0 + ' · ошибок: ' + err;
+    $('nspdStatus').textContent = 'Обработано: ' + (ok + nf0 + err) + ' из ' + todo.length + ' · получено: ' + ok + ' · не найдено: ' + nf0 + ' · ошибок: ' + err +
+      (skippedNoParcel ? ' · без номера участка (по адресу): ' + skippedNoParcel : '');
     if ((ok + nf0 + err) % 25 === 0) { updateCounters(); renderTable(); saveLots(); }
   });
   applyFilters();
