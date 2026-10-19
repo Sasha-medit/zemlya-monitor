@@ -145,14 +145,13 @@ td.num{white-space:nowrap}
     <h3>Начальная цена, ₽</h3>
     <div class="row2"><input type="number" id="fPriceMin" placeholder="от"><input type="number" id="fPriceMax" placeholder="до"></div>
     <h3>Кадастровая стоимость, ₽</h3>
-    <div class="row2"><input type="number" id="fCostMin" placeholder="от"><input type="number" id="fCostMax" placeholder="до"></div>
+    <div class="row2"><input type="number" id="fCostMin" placeholder="от (минимум)"><input type="number" id="fCostMax" placeholder="до"></div>
+    <div class="hint" id="costInfo" style="margin:6px 0 0"></div>
     <h3>НЦ / КС, %</h3>
     <div class="row2"><input type="number" id="fPctMin" placeholder="от"><input type="number" id="fPctMax" placeholder="до"></div>
     <h3>Окончание приёма заявок</h3>
     <div class="row2"><input type="date" id="fDateFrom"><input type="date" id="fDateTo"></div>
 
-    <label class="chk"><input type="checkbox" id="fOnlyOpen" checked> Только с открытым приёмом заявок</label>
-    <label class="chk"><input type="checkbox" id="fHideCancelled" checked> Скрывать отменённые</label>
     <button class="btn ghost" id="btnReset" style="width:100%;margin-top:8px">Сбросить фильтры</button>
   </aside>
 
@@ -182,7 +181,7 @@ td.num{white-space:nowrap}
     <h2>Данные</h2>
     <p class="hint">По умолчанию выбраны все регионы России — можно сузить список, если нужны конкретные. Страница скачивает извещения с torgi.gov.ru прямо в вашем браузере и хранит их здесь же, в этом браузере. Загрузка не обязана забирать всё за один раз: нажимайте «Загрузить» повторно (в том числе в другой день) — уже сохранённые лоты не скачиваются заново, докачиваются только новые, и со временем в базе накопятся все актуальные лоты по выбранным регионам.</p>
     <div id="loadRegionHost"></div>
-    <label class="lb">За сколько последних дней собрать извещения (для первой пробной загрузки лучше небольшое число — по всей стране в день публикуется несколько сотен извещений)</label>
+    <label class="lb">За сколько последних дней собрать извещения. Архив хранится 90 дней после окончания приёма заявок; итоги торгов (состоялся, не состоялся, итоговая цена) подгружаются вместе с ним. Чтобы получить и завершённые лоты за 90 дней, поставьте около 130 дней (извещение выходит минимум за 30 дней до конца приёма). По всей стране в день публикуется около 700 извещений, поэтому для большого периода выбирайте нужные регионы</label>
     <input type="number" id="loadDays" min="1" max="365" value="3">
     <label class="lb">Адрес вашего прокси (необязательно, см. инструкцию в конце окна)</label>
     <input type="text" id="proxyUrl" placeholder="https://ваш-сайт.ru/proxy.php?key=…">
@@ -325,6 +324,14 @@ function isParcelCadastral(cad){
 }
 
 function derive(r){
+  if (r.cadCost == null && Array.isArray(r.extra)){
+    for (const p of r.extra){
+      if (/кадастров\S*\s+стоимост|cadastral\S*(cost|value)/i.test(String(p[0]))){
+        const n = toNumber(p[1]);
+        if (n != null && n > 0){ r.cadCost = n; break; }
+      }
+    }
+  }
   r.group = landGroup(r.category, r.permittedUse, r.lotName);
   r.groupLabel = GROUPS[r.group].label;
   r.cadQuarter = r.cadastralNumber ? String(r.cadastralNumber).split(':').slice(0,3).join(':') : null;
@@ -468,6 +475,40 @@ function parseNspd(json, cadNum){
   };
 }
 
+function parseProtocol(j){
+  const so = j && j.exportObject && j.exportObject.structuredObject;
+  if (!so) return null;
+  const key = Object.keys(so)[0];
+  const p = so[key];
+  if (!p) return null;
+  const base = p.protocolBase || {};
+  const ci = base.commonInfo || {};
+  const lot = p.lot || {};
+  if (!ci.noticeNumber || lot.lotNumber == null) return null;
+  const results = Array.isArray(p.actionResults) ? p.actionResults : [];
+  const first = results.find(x => x.place === 'First');
+  const adm = Array.isArray(p.participantAdmissions) ? p.participantAdmissions : [];
+  const type = p.protocolType || key;
+  // Победителей и участников по именам не сохраняем: нужны только итог, цена и число заявок.
+  let outcome;
+  if (p.abandonedReason) outcome = 'fail';
+  else if (first) outcome = 'held';
+  else if (/^AUCTION_RESULTS/.test(type)) outcome = 'fail';
+  else outcome = 'review';
+  return {
+    lotId: ci.noticeNumber + '_' + lot.lotNumber,
+    protocolNumber: ci.protocolNumber || '',
+    publishDate: ci.publishDate || '',
+    type: type,
+    outcome: outcome,
+    reason: p.abandonedReason ? (p.abandonedReason.name || '') : '',
+    applications: base.applicationsNumber != null ? base.applicationsNumber : null,
+    rejected: adm.filter(x => x.admissionStatus === 'REJECTED').length,
+    finalPrice: first ? toNumber(first.participantPrice) : null,
+    actionDate: p.actionDate || ''
+  };
+}
+
 function fmtDay(d){
   const p = n => String(n).padStart(2, '0');
   return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + 'T0000';
@@ -479,7 +520,8 @@ const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const nf = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 });
 const nf1 = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 });
-const fmtNum = v => (v == null ? '—' : nf.format(v));
+const nf2 = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
+const fmtNum = v => (v == null ? '—' : (Math.abs(v) < 1000 && v % 1 !== 0 ? nf2.format(v) : nf.format(v)));
 const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('ru-RU') : '—';
 const fmtDT = iso => iso ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
@@ -526,6 +568,11 @@ const store = {
 let rawData = [];
 let byId = new Map();
 let cancelled = new Set();
+let evMap = new Map();
+let protoMap = new Map();
+let protoCancel = new Set();
+const PROTO_BASE = 'https://torgi.gov.ru/new/opendata/7710568760-protocol';
+const ARCHIVE_DAYS = 90;
 let doneHrefs = new Set();
 let filtered = [];
 let sortKey = 'publishDate', sortDir = -1;
@@ -639,7 +686,7 @@ function initMulti(cfg){
 
 const FILTERS = [
   { id: 'dealType',      label: 'Вид сделки',                  field: 'dealType' },
-  { id: 'procedureName', label: 'Вид торгов (процедура)',      field: 'procedureName' },
+  { id: 'status',        label: 'Статус лота',                 field: 'status' },
   { id: 'region',        label: 'Регион',                      field: 'region' },
   { id: 'groupLabel',    label: 'Тип участка (как на карте)',  field: 'groupLabel' },
   { id: 'category',      label: 'Категория земель',            field: 'category' },
@@ -677,14 +724,10 @@ function applyFilters(){
   const kMin = num('fPctMin'), kMax = num('fPctMax');
   const dFrom = $('fDateFrom').value ? new Date($('fDateFrom').value + 'T00:00:00') : null;
   const dTo = $('fDateTo').value ? new Date($('fDateTo').value + 'T23:59:59') : null;
-  const hideCancel = $('fHideCancelled').checked;
-  const onlyOpen = $('fOnlyOpen').checked;
   const now = Date.now();
   const sets = FILTERS.map(f => [f.field, selected[f.id]]).filter(x => x[1].size);
 
   filtered = rawData.filter(r => {
-    if (hideCancel && r.cancelled) return false;
-    if (onlyOpen && r.biddEnd && new Date(r.biddEnd).getTime() < now) return false;
     for (const [field, set] of sets) if (!set.has(String(r[field]))) return false;
     if (aMin != null && !(r.areaM2 >= aMin)) return false;
     if (aMax != null && !(r.areaM2 <= aMax)) return false;
@@ -714,6 +757,10 @@ function applyFilters(){
 function updateCounters(){
   $('cntFiltered').textContent = nf.format(filtered.length);
   $('cntAll').textContent = nf.format(rawData.length);
+  const withCost = rawData.filter(r => r.cadCost != null).length;
+  $('costInfo').textContent = rawData.length
+    ? 'Кадастровая стоимость известна у ' + nf.format(withCost) + ' из ' + nf.format(rawData.length) + ' лотов. Если задан этот фильтр, лоты без стоимости скрываются.'
+    : '';
 }
 
 /* ---------- таблица ---------- */
@@ -723,6 +770,7 @@ const COLS = [
   { k: 'cadastralNumber', t: 'Кад. номер', cls: 'mono' },
   { k: 'groupLabel', t: 'Тип участка' },
   { k: 'permittedUse', t: 'ВРИ', cls: 'c-use' },
+  { k: 'status', t: 'Статус' },
   { k: 'dealType', t: 'Сделка' },
   { k: 'areaM2', t: 'Площадь, м²', num: 1 },
   { k: 'priceMin', t: 'Нач. цена, ₽', num: 1, price: 1 },
@@ -730,6 +778,9 @@ const COLS = [
   { k: 'pct', t: 'НЦ / КС, %', num: 1, pct: 1 },
   { k: 'pricePerM2', t: '₽ за м²', num: 1 },
   { k: 'biddEnd', t: 'Заявки до', date: 1 },
+  { k: 'applications', t: 'Участников', num: 1 },
+  { k: 'finalPrice', t: 'Итоговая цена, ₽', num: 1 },
+  { k: 'finalPct', t: 'Итог / нач., %', num: 1, pct: 1 },
   { k: 'organizer', t: 'Организатор', cls: 'c-org' }
 ];
 function sortedRows(){
@@ -813,7 +864,7 @@ function openCard(r){
   let h = '<button class="card-close" id="cardClose" title="Закрыть">×</button>';
   h += '<div class="card-head"><span class="badge" style="background:' + g.color + '">' + g.emoji + ' ' + esc(g.label) + '</span>';
   h += '<span class="badge deal">' + esc(r.dealType) + '</span>';
-  if (r.cancelled) h += '<span class="badge cxb">Отменено</span>';
+  if (r.status) h += '<span class="badge' + (r.status === 'Отменено' ? ' cxb' : ' deal') + '">' + esc(r.status) + '</span>';
   h += '<h2>' + esc(r.address || r.lotName || 'Без адреса') + '</h2>';
   h += '<div class="sub">' + esc(r.region) + '</div></div>';
   h += '<div class="stats">' +
@@ -831,7 +882,17 @@ function openCard(r){
   h += cardRow('Вид торгов', r.procedureName);
   h += cardRow('Форма', r.biddForm);
   h += cardRow('Вид договора', r.contractType);
-  h += cardRow('Статус лота', r.lotStatus);
+  h += cardRow('Статус', r.status);
+  if (r.result){
+    const pr = r.result;
+    h += cardRow('Итог торгов', pr.outcome === 'held' ? 'Состоялся' : (pr.outcome === 'fail' ? 'Не состоялся' : 'Заявки рассмотрены, итогов аукциона пока нет'));
+    h += cardRow('Причина', pr.reason);
+    h += cardRow('Участников аукциона', pr.applications != null ? String(pr.applications) : '');
+    h += cardRow('Отклонено заявок', pr.rejected ? String(pr.rejected) : '');
+    if (pr.finalPrice != null) h += cardRow(pr.outcome === 'held' ? 'Итоговая цена' : 'Цена единственного участника', fmtNum(pr.finalPrice) + ' ₽' + (r.finalPct != null ? ' (' + nf1.format(r.finalPct) + ' % от начальной)' : ''));
+    h += cardRow('Дата торгов', fmtDT(pr.actionDate));
+    h += cardRow('Протокол', pr.protocolNumber + ' от ' + fmtDate(pr.publishDate));
+  }
   h += cardRow('Опубликовано', fmtDT(r.publishDate));
   h += cardRow('Начало приёма заявок', fmtDT(r.biddStart));
   h += cardRow('Окончание приёма заявок', fmtDT(r.biddEnd));
@@ -977,6 +1038,9 @@ function saveLots(){
   saveTimer = setTimeout(async () => {
     await store.set('lots', rawData);
     await store.set('cancelled', [...cancelled]);
+    await store.set('events', Object.fromEntries(evMap));
+    await store.set('protocols', Object.fromEntries(protoMap));
+    await store.set('protoCancel', [...protoCancel]);
     await store.set('done', [...doneHrefs]);
     await store.set('geoQ', geoQ);
   }, 400);
@@ -1005,7 +1069,8 @@ async function runLoad(){
 
   // 1. индексы по дням
   const items = [];
-  let dayDone = 0, dayFail = 0;
+  const pitems = [];
+  let dayDone = 0, dayFail = 0, pDayFail = 0;
   await pool(dayList, 4, async d => {
     const key = fmtDay(d);
     let idx = null;
@@ -1017,17 +1082,44 @@ async function runLoad(){
       const j = await fetchJsonSmart(url);
       if (!j){ dayFail++; return; }
       idx = (j.listObjects || []).filter(x => x.biddTypeCode === 'ZK')
-        .map(x => ({ t: x.documentType, r: x.regNum, c: String(x.subjectEstateCode || ''), h: x.href }));
+        .map(x => ({ t: x.documentType, r: x.regNum, c: String(x.subjectEstateCode || ''), h: x.href, p: x.publishDate || '' }));
       if (key !== todayKey && key !== yKey) await store.set(cacheKey, idx);
     }
-    idx.forEach(x => items.push(x));
-  }, () => { dayDone++; setBar(dayDone / dayList.length * 25, 'Просмотр дней: ' + dayDone + ' из ' + dayList.length + (dayFail ? ' · не открылось: ' + dayFail : '')); });
+    idx.forEach(x => items.push(Object.assign({ d: d.getTime() }, x)));
+
+    // протоколы (итоги торгов) за тот же день
+    let pidx = null;
+    const pCacheKey = 'pidx:' + key;
+    if (key !== todayKey && key !== yKey) pidx = await store.get(pCacheKey);
+    if (!pidx){
+      const nextP = new Date(d.getTime() + 86400000);
+      const pj = await fetchJsonSmart(PROTO_BASE + '/data-' + key + '-' + fmtDay(nextP) + '-structure-20240401.json');
+      if (!pj){ pDayFail++; return; }
+      pidx = (pj.listObjects || []).filter(x => x.biddTypeCode === 'ZK' && /^protocol(Results|Consideration|Cancel)$/.test(x.documentType))
+        .map(x => ({ t: x.documentType, r: x.regNum, c: String(x.subjectEstateCode || ''), h: x.href, p: x.publishDate || '' }));
+      if (key !== todayKey && key !== yKey) await store.set(pCacheKey, pidx);
+    }
+    pidx.forEach(x => pitems.push(x));
+  }, () => { dayDone++; setBar(dayDone / dayList.length * 20, 'Просмотр дней: ' + dayDone + ' из ' + dayList.length + (dayFail ? ' · не открылось: ' + dayFail : '')); });
 
   items.filter(x => x.t === 'noticeCancel').forEach(x => cancelled.add(x.r));
+  items.filter(x => x.t === 'noticeStop' || x.t === 'noticeResumption' || x.t === 'noticeAnnulment').forEach(x => {
+    const list = evMap.get(x.r) || [];
+    const stamp = x.p || new Date(x.d).toISOString();
+    if (!list.some(e => e.t === x.t && e.p === stamp)) list.push({ t: x.t, p: stamp });
+    evMap.set(x.r, list);
+  });
   const targets = items.filter(x => x.t === 'notice' && codes.has(x.c) && !doneHrefs.has(x.h));
   let ok = 0, fail = 0, added = 0;
   const total = targets.length;
-  setBar(25, 'Найдено новых извещений по выбранным регионам: ' + nf.format(total));
+  pitems.filter(x => x.t === 'protocolCancel').forEach(x => protoCancel.add(x.r));
+  setBar(20, 'Найдено новых извещений по выбранным регионам: ' + nf.format(total));
+  if (total > 3000 && !confirm('Найдено новых извещений: ' + nf.format(total) + '. Загрузка займёт примерно ' + Math.round(total / 500) + ' мин. Для быстрой проверки лучше сузить список регионов или период. Продолжить?')){
+    finalizeData(false);
+    setBar(20, 'Загрузка отменена. Выберите меньше регионов или дней и нажмите «Загрузить» снова.');
+    $('btnLoad').disabled = false;
+    return;
+  }
 
   // 2. карточки извещений
   await pool(targets, 6, async it => {
@@ -1045,12 +1137,33 @@ async function runLoad(){
     ok++;
   }, () => {
     const n = ok + fail;
-    setBar(25 + n / Math.max(1, total) * 75, 'Загружено извещений: ' + nf.format(ok) + ' из ' + nf.format(total) + (fail ? ' · ошибок: ' + fail : '') + ' · канал: ' + (preferredRoute || '—'));
+    setBar(20 + n / Math.max(1, total) * 50, 'Загружено извещений: ' + nf.format(ok) + ' из ' + nf.format(total) + (fail ? ' · ошибок: ' + fail : '') + ' · канал: ' + (preferredRoute || '—'));
     if (n % 150 === 0) { finalizeData(false); }
   });
 
+  // 3. протоколы по лотам, которые есть в базе
+  const knownNotices = new Set();
+  byId.forEach(r => knownNotices.add(String(r.regNum)));
+  const pTargets = pitems.filter(x => x.t !== 'protocolCancel' && !doneHrefs.has(x.h) && knownNotices.has(String(x.r).slice(0, 20)));
+  let pOk = 0, pFail = 0;
+  const pTotal = pTargets.length;
+  if (!abortLoad && pTotal){
+    setBar(70, 'Загрузка итогов торгов: найдено протоколов ' + nf.format(pTotal));
+    await pool(pTargets, 6, async it => {
+      const j = await fetchJsonSmart(it.h);
+      if (!j){ pFail++; return; }
+      const pr = parseProtocol(j);
+      if (pr && pr.protocolNumber){ protoMap.set(pr.protocolNumber, pr); }
+      doneHrefs.add(it.h);
+      pOk++;
+    }, () => {
+      const n = pOk + pFail;
+      setBar(70 + n / Math.max(1, pTotal) * 30, 'Итоги торгов: ' + nf.format(pOk) + ' из ' + nf.format(pTotal) + (pFail ? ' · ошибок: ' + pFail : ''));
+    });
+  }
+
   finalizeData(true);
-  setBar(100, (abortLoad ? 'Остановлено. ' : 'Готово. ') + 'Новых лотов: ' + nf.format(added) + ' · извещений загружено: ' + nf.format(ok) + (fail ? ' · не удалось: ' + fail + ' (повторите загрузку, они догрузятся)' : '') + (dayFail ? ' · дней без ответа: ' + dayFail : ''));
+  setBar(100, (abortLoad ? 'Остановлено. ' : 'Готово. ') + 'Протоколов с итогами: ' + nf.format(pOk) + (pFail ? ' (не удалось: ' + pFail + ')' : '') + (pDayFail ? ' · дней без списка протоколов: ' + pDayFail : '') + '. ' + 'Новых лотов: ' + nf.format(added) + ' · извещений загружено: ' + nf.format(ok) + (fail ? ' · не удалось: ' + fail + ' (повторите загрузку, они догрузятся)' : '') + (dayFail ? ' · дней без ответа: ' + dayFail : ''));
   $('btnLoad').disabled = false;
 
   const totalTried = dayList.length;
@@ -1067,12 +1180,45 @@ async function runLoad(){
     errBox.hidden = true;
   }
 }
+function computeStatus(r, nowMs){
+  if (r.cancelled) return 'Отменено';
+  const ev = (evMap.get(r.regNum) || []).slice().sort((a, b) => String(a.p).localeCompare(String(b.p)));
+  let state = null;
+  ev.forEach(e => {
+    if (e.t === 'noticeStop') state = 'stop';
+    else if (e.t === 'noticeResumption') state = null;
+    else if (e.t === 'noticeAnnulment') state = 'annul';
+  });
+  if (state === 'annul') return 'Результаты аннулированы';
+  if (r.result){
+    if (r.result.outcome === 'held') return 'Состоялся';
+    if (r.result.outcome === 'fail') return 'Не состоялся';
+    return 'Заявки рассмотрены';
+  }
+  if (state === 'stop') return 'Приостановлено';
+  if (r.biddStart && new Date(r.biddStart).getTime() > nowMs) return 'Приём не начался';
+  if (r.biddEnd && new Date(r.biddEnd).getTime() < nowMs) return 'Приём завершён';
+  return 'Приём заявок';
+}
 function finalizeData(full){
   const nowMs = Date.now();
+  const bestProto = new Map();
+  protoMap.forEach(p => {
+    if (protoCancel.has(p.protocolNumber)) return;
+    const cur = bestProto.get(p.lotId);
+    if (!cur || String(p.publishDate) > String(cur.publishDate)) bestProto.set(p.lotId, p);
+  });
   byId.forEach((r, id) => {
     r.cancelled = cancelled.has(r.regNum);
-    if (r.biddEnd && nowMs - new Date(r.biddEnd).getTime() > 14 * 86400000) byId.delete(id);
+    const pr = bestProto.get(r.lotId) || null;
+    r.result = pr;
+    r.finalPrice = pr ? pr.finalPrice : null;
+    r.finalPct = (pr && pr.finalPrice > 0 && r.priceMin > 0) ? pr.finalPrice / r.priceMin * 100 : null;
+    r.applications = pr ? pr.applications : null;
+    r.status = computeStatus(r, nowMs);
+    if (r.biddEnd && nowMs - new Date(r.biddEnd).getTime() > ARCHIVE_DAYS * 86400000) byId.delete(id);
   });
+  protoMap.forEach((p, k) => { if (!byId.has(p.lotId)) protoMap.delete(k); });
   rawData = [...byId.values()];
   refreshFilterLists();
   applyFilters();
@@ -1137,10 +1283,14 @@ async function boot(){
   const lots = await store.get('lots');
   if (Array.isArray(lots)) lots.forEach(r => { derive(r); byId.set(r.lotId, r); });
   cancelled = new Set(await store.get('cancelled') || []);
+  evMap = new Map(Object.entries(await store.get('events') || {}));
+  protoMap = new Map(Object.entries(await store.get('protocols') || {}));
+  protoCancel = new Set(await store.get('protoCancel') || []);
   doneHrefs = new Set(await store.get('done') || []);
   geoQ = await store.get('geoQ') || {};
 
   buildFilters();
+  selected.status.add('Приём заявок'); multis.status.updateCount();
   try {
     const saved = JSON.parse(lsGet('zemlya.regions') || 'null');
     if (Array.isArray(saved) && saved.length) saved.forEach(c => loadSel.add(String(c)));
@@ -1162,7 +1312,7 @@ async function boot(){
   ['fText', 'fAreaMin', 'fAreaMax', 'fPriceMin', 'fPriceMax', 'fCostMin', 'fCostMax', 'fPctMin', 'fPctMax'].forEach(id => {
     let t; $(id).addEventListener('input', () => { clearTimeout(t); t = setTimeout(applyFilters, 250); });
   });
-  ['fDateFrom', 'fDateTo', 'fHideCancelled', 'fOnlyOpen'].forEach(id => $(id).addEventListener('change', applyFilters));
+  ['fDateFrom', 'fDateTo'].forEach(id => $(id).addEventListener('change', applyFilters));
   $('btnReset').addEventListener('click', () => {
     Object.values(selected).forEach(s => s.clear());
     document.querySelectorAll('.sidebar input[type=text], .sidebar input[type=number], .sidebar input[type=date]').forEach(i => i.value = '');
@@ -1177,8 +1327,8 @@ async function boot(){
   $('btnCsv').addEventListener('click', exportCsv);
   $('btnClear').addEventListener('click', async () => {
     if (!confirm('Удалить все загруженные лоты из этого браузера?')) return;
-    byId.clear(); cancelled.clear(); doneHrefs.clear(); geoQ = {}; rawData = [];
-    await store.set('lots', []); await store.set('cancelled', []); await store.set('done', []); await store.set('geoQ', {});
+    byId.clear(); cancelled.clear(); evMap.clear(); protoMap.clear(); protoCancel.clear(); doneHrefs.clear(); geoQ = {}; rawData = [];
+    await store.set('lots', []); await store.set('cancelled', []); await store.set('events', {}); await store.set('protocols', {}); await store.set('protoCancel', []); await store.set('done', []); await store.set('geoQ', {});
     refreshFilterLists(); applyFilters();
   });
 }
