@@ -609,8 +609,8 @@ async function fetchJsonSmart(url, opts = {}){
   }
   for (const [name, fn] of routes){
     try {
-      const r = await tryFetch(fn(url));
-      if (r.status === 200){ preferredRoute = name; return r.json; }
+      const r = await tryFetch(fn(url), opts.timeout || 30000);
+      if (r.status === 200){ if (!opts.noDirect) preferredRoute = name; return r.json; }
       if (r.status === 404) return null;
     } catch(e){}
   }
@@ -1238,24 +1238,50 @@ async function runNspd(){
       : 'Для выбранных лотов кадастровые данные уже есть или кадастровых номеров нет.';
     return;
   }
-  if (todo.length > 1500 && !confirm('Лотов в выборке: ' + todo.length + '. Загрузка займёт много времени. Продолжить?')) return;
+  if (!userProxy){
+    $('nspdStatus').textContent = 'Не указан адрес вашего прокси. Кадастровая карта не отвечает браузеру напрямую, без прокси на российском хостинге загрузка невозможна. Впишите адрес в поле выше и повторите.';
+    return;
+  }
+  if (todo.length > 300 && !confirm('Лотов к обработке: ' + nf.format(todo.length) + '. Это может занять много часов. Лучше сначала сузить таблицу фильтрами (регион, ВРИ, площадь, цена, статус) и запускать загрузку для короткого списка. Продолжить?')) return;
   abortLoad = false;
   $('btnNspd').disabled = true;
-  let ok = 0, nf0 = 0, err = 0;
-  await pool(todo, 3, async r => {
+  let ok = 0, nf0 = 0, err = 0, consecErr = 0;
+  const t0 = Date.now();
+  const nspdOne = async r => {
     const url = 'https://nspd.gov.ru/api/geoportal/v2/search/geoportal?thematicSearchId=1&query=' + encodeURIComponent(r.cadastralNumber);
-    const j = await fetchJsonSmart(url, { noPublic: true });
-    if (!j){ err++; return; }
+    const j = await fetchJsonSmart(url, { noDirect: true, noPublic: true, timeout: 20000 });
+    if (!j){ err++; consecErr++; return false; }
+    consecErr = 0;
     const p = parseNspd(j, r.cadastralNumber);
-    if (!p){ r.cadStatus = 'nf'; nf0++; return; }
+    if (!p){ r.cadStatus = 'nf'; nf0++; return true; }
     r.cadCost = p.cadCost; r.cadArea = p.cadArea; r.cadStatus = 'ok';
     if (p.lat != null){ r.lat = p.lat; r.lon = p.lon; r.approx = false; }
     derive(r);
     ok++;
+    return true;
+  };
+  // пробные запросы: если первые три не прошли, останавливаемся, а не перебираем весь список
+  let probeOk = false;
+  const probe = todo.slice(0, 3);
+  for (const r of probe){ if (await nspdOne(r)) probeOk = true; if (abortLoad) break; }
+  if (!probeOk && !abortLoad){
+    $('btnNspd').disabled = false;
+    $('nspdStatus').textContent = 'Первые три запроса не прошли: прокси не отвечает или кадастровая карта его не пускает. Проверьте адрес прокси в окне «Данные» (он должен открываться в браузере и отвечать), и повторите. Ошибок: ' + err + '.';
+    return;
+  }
+  const rest = todo.slice(3);
+  const nfD = v => v < 90 ? Math.max(1, Math.round(v)) + ' мин' : (v / 60).toFixed(1) + ' ч';
+  await pool(rest, 3, async r => {
+    if (consecErr >= 8){ consecErr = 0; await sleep(20000); }
+    await nspdOne(r);
   }, () => {
-    $('nspdStatus').textContent = 'Обработано: ' + (ok + nf0 + err) + ' из ' + todo.length + ' · получено: ' + ok + ' · не найдено: ' + nf0 + ' · ошибок: ' + err +
+    const done = ok + nf0 + err;
+    const rate = done / Math.max(0.1, (Date.now() - t0) / 60000);
+    const left = (todo.length - done) / Math.max(0.1, rate);
+    $('nspdStatus').textContent = 'Обработано: ' + nf.format(done) + ' из ' + nf.format(todo.length) + ' · получено: ' + ok + ' · не найдено: ' + nf0 + ' · ошибок: ' + err +
+      ' · скорость ≈ ' + Math.round(rate) + ' лотов/мин · осталось ≈ ' + nfD(left) +
       (skippedNoParcel ? ' · без номера участка (по адресу): ' + skippedNoParcel : '');
-    if ((ok + nf0 + err) % 25 === 0) { updateCounters(); renderTable(); saveLots(); }
+    if (done % 25 === 0) { updateCounters(); renderTable(); saveLots(); }
   });
   applyFilters();
   saveLots();
