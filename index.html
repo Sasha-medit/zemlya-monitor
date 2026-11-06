@@ -345,12 +345,21 @@ function derive(r){
   r.hasParcel = isParcelCadastral(r.cadastralNumber);
   r.pricePerM2 = (r.priceMin > 0 && r.areaM2 > 0) ? r.priceMin / r.areaM2 : null;
   r.pct = (r.priceMin > 0 && r.cadCost > 0) ? r.priceMin / r.cadCost * 100 : null;
-  // Оценка по средней цене за м² в кадастровом квартале (файлы Росреестра), если точной стоимости нет
-  r.cadEst = null; r.pctEst = null;
-  if (r.cadCost == null && r.cadQuarter && r.areaM2 > 0 && typeof qCost !== 'undefined' && qCost){
-    const q = qCost.get(r.cadQuarter);
-    if (q){
-      r.cadEst = Math.round(r.areaM2 * q[0]);
+  // Оценка по средней цене за м² (файлы Росреестра): квартал, иначе район, иначе регион
+  r.cadEst = null; r.pctEst = null; r.estLevel = '';
+  if (r.cadCost == null && r.areaM2 > 0 && typeof qCost !== 'undefined' && qCost){
+    const cn = r.cadastralNumber ? String(r.cadastralNumber).split(':') : [];
+    let pm = null;
+    const hq = r.cadQuarter ? qCost.get(r.cadQuarter) : null;
+    if (hq){ pm = hq[0]; r.estLevel = 'квартал'; }
+    else if (cn.length >= 2 && dCost && dCost.get(cn[0] + ':' + cn[1])){ pm = dCost.get(cn[0] + ':' + cn[1])[0]; r.estLevel = 'район'; }
+    else {
+      let rc = cn.length >= 1 && /^\d{1,2}$/.test(cn[0]) ? cn[0] : (r.regionCode ? String(r.regionCode) : '');
+      if (/^\d$/.test(rc)) rc = '0' + rc;
+      if (rc && rCost && rCost.get(rc)){ pm = rCost.get(rc)[0]; r.estLevel = 'регион'; }
+    }
+    if (pm != null){
+      r.cadEst = Math.round(r.areaM2 * pm);
       if (r.priceMin > 0 && r.cadEst > 0) r.pctEst = r.priceMin / r.cadEst * 100;
     }
   }
@@ -589,7 +598,14 @@ let cancelled = new Set();
 let evMap = new Map();
 let protoMap = new Map();
 let protoCancel = new Set();
-let qCost = null;
+let qCost = null, dCost = null, rCost = null;
+function buildUpper(){
+  dCost = new Map(); rCost = new Map();
+  if (!qCost) return;
+  const add = (m, k, mean, w) => { const e = m.get(k); if (e){ e[0] += mean * w; e[1] += w; } else m.set(k, [mean * w, w]); };
+  qCost.forEach((v, q) => { const p = q.split(':'); add(dCost, p[0] + ':' + p[1], v[0], v[1]); add(rCost, p[0], v[0], v[1]); });
+  [dCost, rCost].forEach(m => m.forEach(e => { e[0] = e[0] / e[1]; }));
+}
 const PROTO_BASE = 'https://torgi.gov.ru/new/opendata/7710568760-protocol';
 const ARCHIVE_DAYS = 90;
 let doneHrefs = new Set();
@@ -797,6 +813,7 @@ const COLS = [
   { k: 'cadCost', t: 'Кад. стоимость, ₽', num: 1 },
   { k: 'pct', t: 'НЦ / КС, %', num: 1, pct: 1 },
   { k: 'cadEst', t: 'Оценка КС, ₽', num: 1 },
+  { k: 'estLevel', t: 'Основа оценки' },
   { k: 'pctEst', t: 'НЦ / КС (оценка), %', num: 1, pct: 1 },
   { k: 'pricePerM2', t: '₽ за м²', num: 1 },
   { k: 'biddEnd', t: 'Заявки до', date: 1 },
@@ -891,7 +908,7 @@ function openCard(r){
   h += '<div class="sub">' + esc(r.region) + '</div></div>';
   h += '<div class="stats">' +
     '<div><span>Начальная цена</span><b class="price">' + (r.priceMin ? fmtNum(r.priceMin) + ' ₽' : (r.priceMin === 0 ? '0 ₽' : '—')) + '</b></div>' +
-    '<div><span>Кадастровая стоимость</span><b>' + (r.cadCost != null ? fmtNum(r.cadCost) + ' ₽' : (r.cadEst != null ? '≈ ' + fmtNum(r.cadEst) + ' ₽ (оценка)' : '—')) + '</b></div>' +
+    '<div><span>Кадастровая стоимость</span><b>' + (r.cadCost != null ? fmtNum(r.cadCost) + ' ₽' : (r.cadEst != null ? '≈ ' + fmtNum(r.cadEst) + ' ₽ (оценка по ' + (r.estLevel === 'квартал' ? 'кварталу' : (r.estLevel === 'район' ? 'району' : 'региону')) + ')' : '—')) + '</b></div>' +
     '<div><span>НЦ / КС</span><b>' + (r.pct != null ? nf1.format(r.pct) + ' %' : (r.pctEst != null ? '≈ ' + nf1.format(r.pctEst) + ' % (оценка)' : '—')) + '</b></div>' +
     '<div><span>Площадь</span><b>' + (r.areaM2 != null ? fmtNum(r.areaM2) + ' м²' : '—') + '</b></div>' +
     '<div><span>Цена за м²</span><b>' + (r.pricePerM2 != null ? nf1.format(r.pricePerM2) + ' ₽' : '—') + '</b></div>' +
@@ -1369,12 +1386,22 @@ async function runQFiles(files){
     const m = new Map();
     src.forEach((e, q) => m.set(q, [e[1] / e[0], e[0]]));
     qCost = m;
+    buildUpper();
     await store.set('qcost', m);
     byId.forEach(r => derive(r));
     finalizeData(false);
-    const est = rawData.filter(r => r.cadCost == null && r.cadEst != null).length;
+    const lv = { 'квартал': 0, 'район': 0, 'регион': 0 };
+    let exact = 0, noArea = 0, noEst = 0;
+    rawData.forEach(r => {
+      if (r.cadCost != null) exact++;
+      else if (r.cadEst != null) lv[r.estLevel]++;
+      else if (!(r.areaM2 > 0)) noArea++;
+      else noEst++;
+    });
     bar.style.width = '100%';
-    st.textContent = 'Готово. Файлов: ' + files.length + ' · строк учтено: ' + nf.format(agg.rows) + ' · кварталов: ' + nf.format(m.size) + (agg.landRows ? '' : ' · код земельных участков в файлах не найден, учтены все объекты') + '. Оценка рассчитана для ' + nf.format(est) + ' лотов из ' + nf.format(rawData.length) + '.';
+    st.textContent = 'Готово. Файлов: ' + files.length + ' · кварталов: ' + nf.format(m.size) + (agg.landRows ? '' : ' · код земельных участков в файлах не найден, учтены все объекты') +
+      '. Лотов всего: ' + nf.format(rawData.length) + ': точная стоимость у ' + nf.format(exact) + '; оценка по кварталу ' + nf.format(lv['квартал']) + ', по району ' + nf.format(lv['район']) + ', по региону ' + nf.format(lv['регион']) +
+      '; без оценки: ' + nf.format(noArea + noEst) + ' (в извещении нет площади: ' + nf.format(noArea) + ', нет данных по региону: ' + nf.format(noEst) + ').';
   } catch (e){
     st.textContent = 'Ошибка: ' + (e && e.message ? e.message : e);
   }
@@ -1401,6 +1428,7 @@ const loadSel = new Set();
 async function boot(){
   await store.init();
   qCost = await store.get('qcost') || null;
+  buildUpper();
   const lots = await store.get('lots');
   if (Array.isArray(lots)) lots.forEach(r => { derive(r); byId.set(r.lotId, r); });
   cancelled = new Set(await store.get('cancelled') || []);
