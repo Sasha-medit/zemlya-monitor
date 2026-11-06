@@ -183,8 +183,8 @@ td.num{white-space:nowrap}
     <div id="loadRegionHost"></div>
     <label class="lb">За сколько последних дней собрать извещения. Архив хранится 90 дней после окончания приёма заявок; итоги торгов (состоялся, не состоялся, итоговая цена) подгружаются вместе с ним. Чтобы получить и завершённые лоты за 90 дней, поставьте около 130 дней (извещение выходит минимум за 30 дней до конца приёма). По всей стране в день публикуется около 700 извещений, поэтому для большого периода выбирайте нужные регионы</label>
     <input type="number" id="loadDays" min="1" max="365" value="3">
-    <label class="lb">Адрес вашего прокси (необязательно, см. инструкцию в конце окна)</label>
-    <input type="text" id="proxyUrl" placeholder="https://ваш-сайт.ru/proxy.php?key=…">
+    <label class="lb">Адрес посредника на вашем компьютере (нужен для кадастровых данных). Запустите файл start-proxy.bat и впишите: http://localhost:8787/</label>
+    <input type="text" id="proxyUrl" placeholder="http://localhost:8787/">
     <div class="actions">
       <button class="btn" id="btnLoad">Загрузить</button>
       <button class="btn ghost" id="btnStop">Остановить</button>
@@ -195,9 +195,16 @@ td.num{white-space:nowrap}
     <div class="note" id="loadError" hidden style="border-color:#f3b4ae;background:#fdecea;color:#912018"></div>
 
     <h3>Кадастровые данные (НСПД)</h3>
-    <p class="hint">Для лотов, которые сейчас отображаются в таблице, подгружает кадастровую стоимость и точные координаты участка. По ним считаются «НЦ / КС» и точки на карте. Работает только через ваш прокси на российском хостинге.</p>
+    <p class="hint">Для лотов, которые сейчас отображаются в таблице, подгружает кадастровую стоимость и точные координаты участка. По ним считаются «НЦ / КС» и точки на карте. Работает только при запущенном посреднике на вашем компьютере (файл start-proxy.bat, окно должно оставаться открытым).</p>
     <button class="btn" id="btnNspd">Загрузить для отфильтрованных лотов</button>
     <div id="nspdStatus"></div>
+
+    <h3>Оценка по файлам Росреестра</h3>
+    <p class="hint">Для лотов, у которых нет точной кадастровой стоимости, можно посчитать оценку по средней цене за квадратный метр в их кадастровом квартале. Нажмите кнопку и выберите сразу все четыре файла «dataset_КАДАСТРСТОИМОСТЬ…csv» (в окне выбора нажмите Ctrl+A). Файлы никуда не отправляются: программа читает их на вашем компьютере и запоминает только средние цены по кварталам. Чтение занимает несколько минут и нужно один раз.</p>
+    <button class="btn" id="btnQ">Выбрать файлы Росреестра</button>
+    <input type="file" id="qFiles" accept=".csv" multiple hidden>
+    <div class="bar" style="margin-top:10px"><div id="qBar" style="height:100%;width:0;background:var(--accent)"></div></div>
+    <div id="qStatus" style="color:var(--dim);font-size:12.5px;margin-top:7px;min-height:18px"></div>
 
     <div class="actions" style="margin-top:22px"><button class="btn ghost" id="btnClose">Закрыть</button></div>
   </div>
@@ -338,6 +345,17 @@ function derive(r){
   r.hasParcel = isParcelCadastral(r.cadastralNumber);
   r.pricePerM2 = (r.priceMin > 0 && r.areaM2 > 0) ? r.priceMin / r.areaM2 : null;
   r.pct = (r.priceMin > 0 && r.cadCost > 0) ? r.priceMin / r.cadCost * 100 : null;
+  // Оценка по средней цене за м² в кадастровом квартале (файлы Росреестра), если точной стоимости нет
+  r.cadEst = null; r.pctEst = null;
+  if (r.cadCost == null && r.cadQuarter && r.areaM2 > 0 && typeof qCost !== 'undefined' && qCost){
+    const q = qCost.get(r.cadQuarter);
+    if (q){
+      r.cadEst = Math.round(r.areaM2 * q[0]);
+      if (r.priceMin > 0 && r.cadEst > 0) r.pctEst = r.priceMin / r.cadEst * 100;
+    }
+  }
+  r.costEff = r.cadCost != null ? r.cadCost : r.cadEst;
+  r.pctEff = r.pct != null ? r.pct : r.pctEst;
   return r;
 }
 
@@ -571,6 +589,7 @@ let cancelled = new Set();
 let evMap = new Map();
 let protoMap = new Map();
 let protoCancel = new Set();
+let qCost = null;
 const PROTO_BASE = 'https://torgi.gov.ru/new/opendata/7710568760-protocol';
 const ARCHIVE_DAYS = 90;
 let doneHrefs = new Set();
@@ -733,10 +752,10 @@ function applyFilters(){
     if (aMax != null && !(r.areaM2 <= aMax)) return false;
     if (pMin != null && !(r.priceMin >= pMin)) return false;
     if (pMax != null && !(r.priceMin <= pMax)) return false;
-    if (cMin != null && !(r.cadCost >= cMin)) return false;
-    if (cMax != null && !(r.cadCost <= cMax)) return false;
-    if (kMin != null && !(r.pct >= kMin)) return false;
-    if (kMax != null && !(r.pct <= kMax)) return false;
+    if (cMin != null && !(r.costEff >= cMin)) return false;
+    if (cMax != null && !(r.costEff <= cMax)) return false;
+    if (kMin != null && !(r.pctEff >= kMin)) return false;
+    if (kMax != null && !(r.pctEff <= kMax)) return false;
     if (dFrom || dTo){
       if (!r.biddEnd) return false;
       const d = new Date(r.biddEnd);
@@ -758,8 +777,9 @@ function updateCounters(){
   $('cntFiltered').textContent = nf.format(filtered.length);
   $('cntAll').textContent = nf.format(rawData.length);
   const withCost = rawData.filter(r => r.cadCost != null).length;
+  const withEst = rawData.filter(r => r.cadCost == null && r.cadEst != null).length;
   $('costInfo').textContent = rawData.length
-    ? 'Кадастровая стоимость известна у ' + nf.format(withCost) + ' из ' + nf.format(rawData.length) + ' лотов. Если задан этот фильтр, лоты без стоимости скрываются.'
+    ? 'Точная кадастровая стоимость у ' + nf.format(withCost) + ', оценка по кварталу у ' + nf.format(withEst) + ' из ' + nf.format(rawData.length) + ' лотов. Фильтры учитывают и оценку. Лоты без стоимости при заданном фильтре скрываются.'
     : '';
 }
 
@@ -776,6 +796,8 @@ const COLS = [
   { k: 'priceMin', t: 'Нач. цена, ₽', num: 1, price: 1 },
   { k: 'cadCost', t: 'Кад. стоимость, ₽', num: 1 },
   { k: 'pct', t: 'НЦ / КС, %', num: 1, pct: 1 },
+  { k: 'cadEst', t: 'Оценка КС, ₽', num: 1 },
+  { k: 'pctEst', t: 'НЦ / КС (оценка), %', num: 1, pct: 1 },
   { k: 'pricePerM2', t: '₽ за м²', num: 1 },
   { k: 'biddEnd', t: 'Заявки до', date: 1 },
   { k: 'applications', t: 'Участников', num: 1 },
@@ -869,8 +891,8 @@ function openCard(r){
   h += '<div class="sub">' + esc(r.region) + '</div></div>';
   h += '<div class="stats">' +
     '<div><span>Начальная цена</span><b class="price">' + (r.priceMin ? fmtNum(r.priceMin) + ' ₽' : (r.priceMin === 0 ? '0 ₽' : '—')) + '</b></div>' +
-    '<div><span>Кадастровая стоимость</span><b>' + (r.cadCost != null ? fmtNum(r.cadCost) + ' ₽' : '—') + '</b></div>' +
-    '<div><span>НЦ / КС</span><b>' + (r.pct != null ? nf1.format(r.pct) + ' %' : '—') + '</b></div>' +
+    '<div><span>Кадастровая стоимость</span><b>' + (r.cadCost != null ? fmtNum(r.cadCost) + ' ₽' : (r.cadEst != null ? '≈ ' + fmtNum(r.cadEst) + ' ₽ (оценка)' : '—')) + '</b></div>' +
+    '<div><span>НЦ / КС</span><b>' + (r.pct != null ? nf1.format(r.pct) + ' %' : (r.pctEst != null ? '≈ ' + nf1.format(r.pctEst) + ' % (оценка)' : '—')) + '</b></div>' +
     '<div><span>Площадь</span><b>' + (r.areaM2 != null ? fmtNum(r.areaM2) + ' м²' : '—') + '</b></div>' +
     '<div><span>Цена за м²</span><b>' + (r.pricePerM2 != null ? nf1.format(r.pricePerM2) + ' ₽' : '—') + '</b></div>' +
     '<div><span>Заявки до</span><b>' + fmtDate(r.biddEnd) + '</b></div></div>';
@@ -1172,7 +1194,7 @@ async function runLoad(){
     errBox.hidden = false;
     errBox.innerHTML = '<b>Не удалось подключиться к torgi.gov.ru ни разу.</b> Проверено каналов: напрямую' + (userProxy ? ', через ваш прокси' : '') + ', через публичный прокси — все вернули ошибку. ' +
       'Откройте инструменты разработчика (клавиша F12) → вкладка Console, и пришлите мне текст красных строк — по нему я пойму точную причину.' +
-      (userProxy ? '' : ' Если это повторяется — самый надёжный вариант: свой прокси-скрипт на вашем хостинге (инструкция ниже, поле «Адрес вашего прокси»).');
+      (userProxy ? '' : ' Если это повторяется, запустите на своём компьютере файл start-proxy.bat и впишите http://localhost:8787/ в поле «Адрес посредника».');
   } else if (total > 0 && ok === 0){
     errBox.hidden = false;
     errBox.innerHTML = '<b>Список дней получен, но ни одно извещение не загрузилось.</b> Похоже, доступны только индексы, а сами карточки лотов блокируются. Пришлите мне, пожалуйста, текст ошибки из вкладки Console (F12).';
@@ -1239,7 +1261,7 @@ async function runNspd(){
     return;
   }
   if (!userProxy){
-    $('nspdStatus').textContent = 'Не указан адрес вашего прокси. Кадастровая карта не отвечает браузеру напрямую, без прокси на российском хостинге загрузка невозможна. Впишите адрес в поле выше и повторите.';
+    $('nspdStatus').textContent = 'Не указан адрес посредника. Кадастровая карта не отвечает браузеру напрямую. Запустите на своём компьютере файл start-proxy.bat (окно оставьте открытым), впишите http://localhost:8787/ в поле «Адрес посредника» выше и повторите.';
     return;
   }
   if (todo.length > 300 && !confirm('Лотов к обработке: ' + nf.format(todo.length) + '. Это может занять много часов. Лучше сначала сузить таблицу фильтрами (регион, ВРИ, площадь, цена, статус) и запускать загрузку для короткого списка. Продолжить?')) return;
@@ -1266,7 +1288,7 @@ async function runNspd(){
   for (const r of probe){ if (await nspdOne(r)) probeOk = true; if (abortLoad) break; }
   if (!probeOk && !abortLoad){
     $('btnNspd').disabled = false;
-    $('nspdStatus').textContent = 'Первые три запроса не прошли: прокси не отвечает или кадастровая карта его не пускает. Проверьте адрес прокси в окне «Данные» (он должен открываться в браузере и отвечать), и повторите. Ошибок: ' + err + '.';
+    $('nspdStatus').textContent = 'Первые три запроса не прошли. Проверьте, что окно start-proxy.bat открыто и в нём написано «Посредник запущен», а в поле выше указан http://localhost:8787/. Если окно открыто, а ошибка остаётся, браузер мог заблокировать доступ к вашему компьютеру: разрешите его во всплывающем запросе или в настройках сайта. Ошибок: ' + err + '.';
     return;
   }
   const rest = todo.slice(3);
@@ -1286,8 +1308,80 @@ async function runNspd(){
   applyFilters();
   saveLots();
   $('btnNspd').disabled = false;
-  if (err && !ok) $('nspdStatus').textContent += '. Сервер НСПД не ответил из браузера. Нужен свой прокси-адрес (инструкция ниже).';
+  if (err && !ok) $('nspdStatus').textContent += '. Сервер НСПД не ответил. Проверьте окно start-proxy.bat.';
 }
+
+/* ---------- оценка по файлам Росреестра ---------- */
+async function readQFile(file, agg, onBytes){
+  const reader = file.stream().getReader();
+  const dec = new TextDecoder('utf-8');
+  let left = '', bytes = 0, idx = null, first = true;
+  const handle = line => {
+    if (first){
+      first = false;
+      const h = line.replace(/^\ufeff/, '').replace(/\r$/, '').split('~');
+      idx = { n: h.indexOf('numbers'), t: h.indexOf('realestate_type_code'), q: h.indexOf('quarter_cad_number'), c: h.indexOf('cost_per_area') };
+      if (idx.q < 0 || idx.c < 0) throw new Error('В файле «' + file.name + '» нет нужных столбцов. Похоже, это не тот файл.');
+      return;
+    }
+    if (!line) return;
+    const f = line.split('~');
+    const q = f[idx.q];
+    if (!q || /:0{7}$/.test(q)) return;
+    const v = parseFloat(f[idx.c]);
+    if (!(v > 0) || v > 1e6) return;
+    const w = idx.n >= 0 ? (parseInt(f[idx.n], 10) || 1) : 1;
+    agg.rows++;
+    const put = (m) => { const e = m.get(q); if (e){ e[0] += w; e[1] += w * v; } else m.set(q, [w, w * v]); };
+    put(agg.all);
+    if (idx.t >= 0 && f[idx.t] === '002001001000'){ agg.landRows++; put(agg.land); }
+  };
+  while (true){
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.length;
+    const text = left + dec.decode(value, { stream: true });
+    let start = 0, nl;
+    while ((nl = text.indexOf('\n', start)) !== -1){ handle(text.substring(start, nl)); start = nl + 1; }
+    left = text.substring(start);
+    onBytes(bytes);
+  }
+  if (left) handle(left);
+}
+async function runQFiles(files){
+  if (!files.length) return;
+  const st = $('qStatus'), bar = $('qBar');
+  $('btnQ').disabled = true;
+  const agg = { all: new Map(), land: new Map(), rows: 0, landRows: 0 };
+  const total = files.reduce((a, f) => a + f.size, 0);
+  let doneBytes = 0;
+  try {
+    for (let i = 0; i < files.length; i++){
+      const f = files[i];
+      await readQFile(f, agg, b => {
+        const pct = (doneBytes + b) / total * 100;
+        bar.style.width = pct.toFixed(1) + '%';
+        st.textContent = 'Файл ' + (i + 1) + ' из ' + files.length + ' · ' + pct.toFixed(0) + ' % · кварталов найдено: ' + nf.format(agg.all.size);
+      });
+      doneBytes += f.size;
+    }
+    const src = agg.landRows > 0 ? agg.land : agg.all;
+    const m = new Map();
+    src.forEach((e, q) => m.set(q, [e[1] / e[0], e[0]]));
+    qCost = m;
+    await store.set('qcost', m);
+    byId.forEach(r => derive(r));
+    finalizeData(false);
+    const est = rawData.filter(r => r.cadCost == null && r.cadEst != null).length;
+    bar.style.width = '100%';
+    st.textContent = 'Готово. Файлов: ' + files.length + ' · строк учтено: ' + nf.format(agg.rows) + ' · кварталов: ' + nf.format(m.size) + (agg.landRows ? '' : ' · код земельных участков в файлах не найден, учтены все объекты') + '. Оценка рассчитана для ' + nf.format(est) + ' лотов из ' + nf.format(rawData.length) + '.';
+  } catch (e){
+    st.textContent = 'Ошибка: ' + (e && e.message ? e.message : e);
+  }
+  $('btnQ').disabled = false;
+}
+$('btnQ').addEventListener('click', () => $('qFiles').click());
+$('qFiles').addEventListener('change', e => { runQFiles([...e.target.files]); e.target.value = ''; });
 
 /* ---------- CSV ---------- */
 function exportCsv(){
@@ -1306,6 +1400,7 @@ function exportCsv(){
 const loadSel = new Set();
 async function boot(){
   await store.init();
+  qCost = await store.get('qcost') || null;
   const lots = await store.get('lots');
   if (Array.isArray(lots)) lots.forEach(r => { derive(r); byId.set(r.lotId, r); });
   cancelled = new Set(await store.get('cancelled') || []);
