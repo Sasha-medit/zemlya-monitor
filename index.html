@@ -617,7 +617,7 @@ let sortKey = 'publishDate', sortDir = -1;
 let page = 0;
 const PAGE_SIZE = 100;
 let abortLoad = false;
-let userProxy = lsGet('zemlya.proxy') || '';
+let userProxy = lsGet('zemlya.proxy') || 'http://localhost:8787/';
 let preferredRoute = null;
 
 /* ---------- сеть ---------- */
