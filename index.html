@@ -74,6 +74,7 @@ td{padding:9px 10px;border-bottom:1px solid #e6ecf4;background:#fff;vertical-ali
 tr[data-id]{cursor:pointer}
 tr[data-id]:hover td{background:var(--panel2)}
 tr.cx td{opacity:.45;text-decoration:line-through}
+td.est{color:var(--dim);font-style:italic}
 td.mono{font-family:'IBM Plex Mono',monospace;font-size:12px;white-space:nowrap}
 td.price{font-weight:700;color:var(--accent)}
 td.num{white-space:nowrap}
@@ -167,7 +168,7 @@ td.num{white-space:nowrap}
       </div>
       <div class="view" id="viewMap">
         <div id="map"></div>
-        <div class="mapbar"><b id="mapInfo"></b><span id="geoInfo"></span></div>
+        <div class="mapbar"><b id="mapInfo"></b><span id="geoInfo"></span><button class="btn" id="btnMapNspd" style="margin-top:6px;padding:6px 10px">Уточнить точки по кадастровому номеру</button></div>
         <div class="legend" id="legend"></div>
       </div>
     </div>
@@ -364,6 +365,7 @@ function derive(r){
     }
   }
   r.costEff = r.cadCost != null ? r.cadCost : r.cadEst;
+  r.costBasis = r.cadCost != null ? 'точная' : (r.cadEst != null ? 'оценка: ' + r.estLevel : '');
   r.pctEff = r.pct != null ? r.pct : r.pctEst;
   return r;
 }
@@ -491,7 +493,8 @@ function parseNspd(json, cadNum){
   if (!feats.length) return null;
   const f = feats.find(x => x.properties && x.properties.options && x.properties.options.cad_num === cadNum) || feats[0];
   const o = (f.properties && f.properties.options) || {};
-  const c = geometryCenter(f.geometry);
+  let c = geometryCenter(f.geometry);
+  if (c && !(c[1] > 40 && c[1] < 83 && (c[0] > 18 || c[0] < -165))) c = null;
   return {
     cadCost: toNumber(o.cost_value),
     cadArea: toNumber(o.specified_area != null ? o.specified_area : (o.declared_area != null ? o.declared_area : o.area)),
@@ -810,11 +813,9 @@ const COLS = [
   { k: 'dealType', t: 'Сделка' },
   { k: 'areaM2', t: 'Площадь, м²', num: 1 },
   { k: 'priceMin', t: 'Нач. цена, ₽', num: 1, price: 1 },
-  { k: 'cadCost', t: 'Кад. стоимость, ₽', num: 1 },
-  { k: 'pct', t: 'НЦ / КС, %', num: 1, pct: 1 },
-  { k: 'cadEst', t: 'Оценка КС, ₽', num: 1 },
-  { k: 'estLevel', t: 'Основа оценки' },
-  { k: 'pctEst', t: 'НЦ / КС (оценка), %', num: 1, pct: 1 },
+  { k: 'costEff', t: 'Кад. стоимость, ₽', num: 1 },
+  { k: 'pctEff', t: 'НЦ / КС, %', num: 1, pct: 1 },
+  { k: 'costBasis', t: 'Основа КС' },
   { k: 'pricePerM2', t: '₽ за м²', num: 1 },
   { k: 'biddEnd', t: 'Заявки до', date: 1 },
   { k: 'applications', t: 'Участников', num: 1 },
@@ -866,6 +867,8 @@ function renderTable(){
       else if (c.date) v = fmtDate(v);
       else v = v ? esc(v) : '—';
       if (c.price && r.priceMin != null) cls += ' price';
+      if (c.k === 'costEff' && r.cadCost == null && r.cadEst != null){ v = '≈ ' + v; cls += ' est'; }
+      if (c.k === 'pctEff' && r.pct == null && r.pctEst != null){ v = '≈ ' + v; cls += ' est'; }
       h += '<td class="' + cls.trim() + '">' + v + '</td>';
     });
     h += '</tr>';
@@ -1008,18 +1011,29 @@ function refreshMap(){
 let geoRun = 0;
 let geoQ = {};
 let geoBusy = false;
-async function geocodeOne(q){
-  if (q in geoQ) return geoQ[q];
-  const u = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ru&q=' + encodeURIComponent(q);
+function regionStem(name){
+  const stop = /^(республика|область|край|автономный|автономная|округ|город|федерального|значения)$/;
+  const w = String(name || '').toLowerCase().replace(/[^а-яёa-z\- ]/g, ' ').split(/\s+/).filter(x => x.length >= 4 && !stop.test(x));
+  w.sort((a, b) => b.length - a.length);
+  return w[0] ? w[0].slice(0, Math.max(4, w[0].length - 2)) : '';
+}
+async function geocodeOne(q, regionName){
+  const ck = q;
+  if (ck in geoQ) return geoQ[ck];
+  const u = 'https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=ru&q=' + encodeURIComponent(q);
   try {
     const r = await fetch(u);
     if (!r.ok) return undefined;
     const j = await r.json();
-    geoQ[q] = j && j[0] ? { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon) } : null;
+    // берём первый результат из нужного региона, чтобы не попадать в одноимённые населённые пункты в других областях
+    const stem = regionStem(regionName);
+    const hit = (j || []).find(x => !stem || String(x.display_name || '').toLowerCase().includes(stem));
+    geoQ[ck] = hit ? { lat: parseFloat(hit.lat), lon: parseFloat(hit.lon) } : null;
     await sleep(1100);
-    return geoQ[q];
+    return geoQ[ck];
   } catch(e){ return undefined; }
 }
+
 async function startGeocoding(){
   geoRun++;
   if (geoBusy) return;          // уже идёт цикл: он заметит смену выборки и начнёт заново
@@ -1035,11 +1049,12 @@ async function startGeocoding(){
       let changed = 0;
       for (const r of todo){
         if (cur !== geoRun){ restart = true; break; }
+        if (r.lat != null) continue;
         if (!$('viewMap').classList.contains('active')) return;
         const qs = geoQueries(r);
         let found = null, failed = false;
         for (let i = 0; i < qs.length; i++){
-          const res = await geocodeOne(qs[i]);
+          const res = await geocodeOne(qs[i], r.region);
           if (res === undefined){ failed = true; break; }
           if (res){ found = res; break; }
         }
@@ -1407,6 +1422,12 @@ async function runQFiles(files){
   }
   $('btnQ').disabled = false;
 }
+$('btnMapNspd').addEventListener('click', async () => {
+  const t = setInterval(() => { $('geoInfo').textContent = $('nspdStatus').textContent; }, 500);
+  await runNspd();
+  clearInterval(t);
+  $('geoInfo').textContent = $('nspdStatus').textContent;
+});
 $('btnQ').addEventListener('click', () => $('qFiles').click());
 $('qFiles').addEventListener('change', e => { runQFiles([...e.target.files]); e.target.value = ''; });
 
@@ -1437,6 +1458,12 @@ async function boot(){
   protoCancel = new Set(await store.get('protoCancel') || []);
   doneHrefs = new Set(await store.get('done') || []);
   geoQ = await store.get('geoQ') || {};
+  if (await store.get('geoVer') !== 2){
+    geoQ = {};
+    byId.forEach(r => { if (r.approx){ r.lat = null; r.lon = null; r.approx = false; } r.geoFail = false; });
+    await store.set('geoVer', 2);
+    saveLots();
+  }
 
   buildFilters();
   selected.status.add('Приём заявок'); multis.status.updateCount();
